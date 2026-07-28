@@ -2,7 +2,7 @@
 
 FAKE_CUSTOMERS = {
     "cust_001": {"plan": "pro", "prior_tickets": 0, "refunds_last_90d": 0},
-    "cust_002": {"plan": "free", "prior_tickets": 7, "refunds_last_90d": 3},
+    "cust_002": {"plan": "pro", "prior_tickets": 7, "refunds_last_90d": 3},
     "cust_003": {"plan": "enterprise", "prior_tickets": 1, "refunds_last_90d": 0},
 }
 

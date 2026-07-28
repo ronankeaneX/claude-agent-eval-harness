@@ -22,7 +22,8 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
 - Agent (Option B) over workflow (Option A): repo exists to showcase agentic skill
 - Pydantic for Python-side validation; Literal mirrors the API enum
 - Schema duplication (JSON enum vs Literal): accepted, protected by a sync test
-  in tests/ (to be written in M1c when tool definitions move into src/triage/)
+  in tests/ — tool definitions now live in src/triage/agent.py as
+  TOOL_DEFINITIONS (module level, importable by tests); test itself is M1d
 - Model: claude-sonnet-4-6
 
 ## Curriculum state
@@ -30,9 +31,10 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
 - [x] M0b: GitHub remote connected, repo public and verified (no .env)
 - [x] M1a: schemas.py — Pydantic models, Literal validation confirmed via REPL
 - [x] M1b: tools.py — FAKE_CUSTOMERS/FAKE_OUTAGES stubs, structured not-found errors
-- [ ] M1c: agent.py — the loop. NEXT UP. Concepts: stop_reason, tool-result
-      feedback, growing message list, natural vs safety termination
-- [ ] M1d: schema sync test (tests/) + intro to pytest
+- [x] M1c: agent.py — the loop. Verified end-to-end Jul 28 via
+      scripts/run_agent_demo.py: agent chose get_customer_history, consumed the
+      tool_result, then hit the natural stop (record_triage), not MAX_TURNS.
+- [ ] M1d: schema sync test (tests/) + intro to pytest. NEXT UP.
 - [ ] M2: Golden dataset (easy/ambiguous/adversarial/out-of-scope taxonomy)
 - [ ] M3: Scoring — deterministic checks + LLM-as-judge
 - [ ] M4: Regression gate, GitHub Actions CI, cost/latency table, README, MIT license
@@ -44,7 +46,17 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   forced vs auto tool_choice; agent = loop + tools + termination
 - D4 Tool Design: JSON Schema basics; structured errors from tools
   (return error dicts, don't crash); tools-as-forms trick for structured output
-- Pending in M1c: stop_reason values, tool_result blocks, max-turns safety cap
+- D1 Agentic Architecture (the loop, from M1c): stop_reason is the branch point —
+  "tool_use" = keep looping, "end_turn" = Claude stopped without deciding,
+  "max_tokens"/other = treat the reply as unreliable. Two terminations, and they
+  are NOT the same thing: the NATURAL stop is a finish-line tool (record_triage
+  called → return), the SAFETY stop is the MAX_TURNS cap on the for-loop.
+  Reaching the safety stop is a failure signal, not a normal exit.
+- D4 Tool Design (from M1c): the tool_result block must quote back Claude's
+  tool_use id, and BOTH sides get appended each round (assistant's request, then
+  our results as a user message) — that growing message list IS the agent's
+  memory of its own investigation. Validate tool input through Pydantic on the
+  way out; the model's JSON is untrusted until it is parsed.
 
 ## Python covered (reference only, don't re-teach)
 imports/venv/pip -m; lists vs dicts (index vs key); def/return/if-in pattern;
@@ -56,3 +68,11 @@ __init__.py = package marker; module vs script; reading tracebacks
   function mechanics via scenario questions rather than re-drilling.
 - Duplication stance: RESOLVED — option (c), cheap sync test as tripwire.
   Goes in README design-decisions section in M4.
+- M2 test-case candidate (spotted in the M1c demo): on cust_002's duplicate-charge
+  ticket the agent called get_customer_history but skipped check_known_outages,
+  even though billing_portal has an active outage in FAKE_OUTAGES. Under-gathering
+  evidence once it feels confident is exactly an "ambiguous" bucket case — does
+  partial investigation still reach the right triage?
+- M1c explain-back + scenario quiz: NOT yet done. Code was verified by running it,
+  but Ronan owes the design explain-back and 2-3 CCA-F questions per the working
+  agreement. Do this before starting M1d.
