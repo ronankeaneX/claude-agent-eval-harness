@@ -20,7 +20,9 @@ SYSTEM_PROMPT = (
     "lookup tools first if customer history or outage status would change your "
     "decision. When you are confident, call record_triage exactly once. "
     "Escalate to a human (needs_human=true) when the ticket involves money lost, "
-    "legal threats, security concerns, or an angry repeat customer."
+    "legal threats, security concerns, an angry repeat customer, or a "
+    "revenue-expanding request such as adding seats, upgrading plans, or an "
+    "enterprise renewal."
 )
 
 # All three tool definitions live here at module level so tests can import them.
