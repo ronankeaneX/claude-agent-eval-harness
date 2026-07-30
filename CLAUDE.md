@@ -31,9 +31,11 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
 - TriageRun metrics dataclass lives in agent.py, not schemas.py: schemas.py holds
   shapes that cross the wire and get validated; TriageRun is local bookkeeping.
 - Model: claude-sonnet-4-6
-- Temperature is a CALLER parameter, not an agent constant. run_triage() takes
-  temperature=None (omit the param, API default applies) or an explicit value;
-  None must never be sent to the API, so build request kwargs conditionally.
+- Temperature is a CALLER parameter, not an agent constant. BOTH run_triage() and
+  run_triage_with_metrics() take temperature=None (omit the param, API default
+  applies) or an explicit value; None must never be sent to the API, so build
+  sampling kwargs conditionally. There is NO literal temperature anywhere in
+  agent.py, by design — the value arrives from whoever is calling.
   The eval harness and the judge pin it to 0 because instruments must be
   repeatable; production temperature remains an OPEN PRODUCT DECISION.
   Rationale: hardcoding 0 inside the agent lets the test harness make a product
@@ -41,11 +43,23 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   hands. README one-liner: "Temperature is a caller parameter, not an agent
   constant — the eval harness pins it to 0 for repeatability; production behavior
   remains an open product decision."
+- The JUDGE hardcodes temperature=0 rather than parameterizing it. Option B
+  applies to the AGENT because the agent has a production life to protect; the
+  judge is instrument-only and has no product decision at stake. The principle
+  is "don't let the harness make product decisions," not "always parameterize."
+  Pinning the judge makes it reproducible without making it correct — correctness
+  is handled by the judge being advisory and never gating.
 - Voting unit: PER-CASE for the gate. Never gate on a per-field composite,
   because a composite can pass while no individual run passed — that gates on a
   synthetic agent instead of the real one. Per-field agreement/flip rates are
   recorded as DIAGNOSTICS only (they are what pointed at the missing urgency
   rubric in M3).
+- Even ties FAIL. No majority means no verdict to gate on. Never fires at the
+  n=3 default; cheap insurance for anyone running --n 4.
+- None results (safety stop or failure to decide) count as FAILED runs for
+  voting, and are a DISTINCT value in flip detection — never folded into False.
+  "Never decided" is a loop/safety-stop defect; "decided no" is a judgment
+  defect. Collapsing them makes a MAX_TURNS bug read as an escalation bug.
 - Baseline is recorded under the FINAL instrument configuration (temperature=0,
   n=3, per-case voting). NOT temp=0 single-run — otherwise every later delta
   compares numbers measured with different instruments. Build the instrument,
@@ -54,7 +68,10 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   reported SEPARATELY from false positives — never blended into one number.
   This extends to the voting layer: a case that fails to escalate on even 1 of n
   runs is a probabilistic missed escalation in production and must appear in the
-  false-negative diagnostics even when it passes the gate on majority.
+  false-negative diagnostics even when it passes the gate on majority. The
+  harness prints an explicit WARNING when a majority pass conceals a real miss —
+  majority voting exists to absorb intermittent failure, and escalation is the
+  one field where absorbing it is exactly wrong.
 - Acceptable-value LISTS allowed on category/urgency for explicitly ambiguous
   cases only (3 of 17). Sets fixed at authoring time, NEVER widened to make a
   run pass. Disagreement means either the agent is wrong or the label is wrong.
@@ -68,11 +85,14 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
 - M3 Option A: deterministic field checks GATE the build; the LLM judge is
   advisory — reported prominently but never fails a build. Judges are models and
   therefore noisy; a gate nobody trusts is worse than no gate.
-- Judge runs ONCE per case even under n-run voting, scoring the first run's
-  output. Tripling calls on an uncalibrated advisory signal buys nothing.
+- Judge runs ONCE per case even under n-run voting, scoring the first NON-NONE
+  run's output and recording which run index was judged; skipped only when ALL n
+  runs are None. Tripling calls on an uncalibrated advisory signal buys nothing.
 - Trigger-citation check promoted from judge to deterministic (five triggers are
   known strings, no model call needed). Blunt keyword match — acknowledge as a
   limitation in the README non-goals section.
+- Unknown --case ID exits 2 rather than reporting 0/0. An instrument must not
+  report a clean result for a measurement it never took.
 
 ## Curriculum state
 - [x] M0: Scaffold — venv, .env hygiene, smoke test w/ forced tool use
@@ -104,10 +124,32 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
             neither caller passed it — a sweep then would have looked measured
             and sampled at 1.0.
             DELIBERATE: scripts/run_agent_demo.py stays at API default so its
-            --n flag demonstrates the variance the harness controls for.
-      - [ ] step 2: n-run majority voting in evals/run_evals.py. Concept brief
-            delivered, voting-unit decision made (per-case), quiz 3/3.
-            Handoff prompt written for Claude Code — code not yet generated.
+            --n flag demonstrates the variance the harness controls for. Not an
+            oversight; document it as a demo.
+      - [x] step 2: DONE. --n majority voting (default 3), PER-CASE on
+            deterministic_pass. Even ties FAIL: no majority means no verdict.
+            None results count as failed runs and are a DISTINCT value in flip
+            detection, not folded into False — "never decided" (loop/safety-stop
+            defect) vs "decided no" (judgment defect) must not be collapsed.
+            Diagnostics: per-field flip rates with offending case IDs +
+            needs_human FN/FP split + an explicit WARNING when a majority pass
+            conceals a real missed escalation. --case with unknown ID exits 2
+            rather than reporting 0/0.
+            Verified OFFLINE with synthetic scored dicts (no API calls):
+            2-of-3 passes, 1-of-3 fails, even tie fails, urgency-only flip
+            detected, intermittent miss shows false_negative=False /
+            any_false_negative=True, None run flips all four fields.
+            CLI: --help correct, --n 0 and --case nope_999 rejected. Quiz 3/3.
+            VERIFIED ON DISK (run_evals.py:93-95, 119, 121): judge scores the
+            first NON-NONE run via a `judged_result is None` first-wins guard;
+            judged_index is 1-based and stored on the row at :113 regardless of
+            --judge, so diagnostics always report which run was or would have
+            been judged. Skipped only when every run returned None (:119).
+            PROJECTED cost for a --n 3 sweep: ~51 runs, ~8 min, ~105k in /
+            ~21k out, +17 calls with --judge. This is SCALED FROM the M3
+            single-run sweep, not measured. Replace with real numbers after
+            step 3.
+      - [ ] step 3: ACTIVE. Re-baseline. See "M4 baseline — frozen reference".
 - [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4
 - [ ] Final 2 days before exam: pure exam review, all five domains, missed
       questions re-run (see "missed questions" list at the bottom)
@@ -134,23 +176,34 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   cases, not as an absolute quality measure. It caught amb_004 and easy_006
   passing deterministically while scoring 2 (right answer, weak reasoning), which
   is precisely the gap the judge exists to surface.
+  CAVEAT (found at M4 step 1): the judge itself ran at temperature 1.0, so part
+  of the 2.9/5 spread may be INSTRUMENT NOISE rather than output quality. A judge
+  at 1.0 can score the same reasoning differently on re-run. The amb_004 /
+  easy_006 finding needs re-verification now that the judge is pinned to 0 —
+  that finding is load-bearing in the README argument for why an advisory judge
+  earns its cost.
 - Cost per full sweep: ~35k input / ~7k output tokens; 158s without judge,
   234s with judge (17 extra calls).
 - One defect fixed during the run: evals/run_evals.py was missing the repo-root
   sys.path bootstrap that scripts/run_agent_demo.py already had.
 
 ## M4 plan — reliability BEFORE prompt work
-1. DONE. Temperature parameterized on run_triage() (Option B), not hardcoded in
-   the agent. Eval runner and judge pass temperature=0. Verify the parameter
-   reaches EVERY messages.create call inside the loop — a deterministic first
-   turn with stochastic follow-up turns looks more stable while still flipping,
-   which is worse than no fix.
-2. n-run majority voting per case in evals/run_evals.py (commodity code —
-   Claude Code's job; the --n flag on the demo script is the per-case precedent).
-   --n defaults to 3. Per-case voting, per-field flip rates as diagnostics,
-   needs_human false-negative flips reported separately from false-positive flips.
-3. Re-baseline and RECORD the number under temp=0 / n=3 / per-case. This is the
-   "before" for everything after.
+1. DONE. Temperature as a caller parameter (Option B), not an agent constant.
+   See curriculum state for details.
+2. DONE. --n majority voting, per-case. See curriculum state for details.
+3. ACTIVE. Re-baseline and RECORD under the FROZEN instrument config
+   (temp=0 / n=3 / per-case / judge advisory on first non-None run).
+   Prerequisites before spending the calls:
+   - - judge scores the first NON-NONE run: VERIFIED ON DISK, no change needed.
+     run_evals.py:93-95 first-wins guard, :119 skip-only-if-all-None,
+     :113 judged_index stored regardless of --judge.
+   - COMMIT first. The baseline must be attributable to a SHA or "we went from
+     X to Y" is unfalsifiable.
+   Command: python evals\run_evals.py --n 3 --judge
+   Record into "M4 baseline — frozen reference" below. Include --judge: the M3
+   judge finding was collected at temperature 1.0 and needs re-verification.
+   Expect roughly 7-8/17. MATERIALLY HIGHER means the voting logic is being
+   generous, not that the agent improved — no defect has been touched yet.
 4. Fix the fifth trigger's wording so direction beats vocabulary. Re-run, measure delta.
 5. Add an urgency rubric to SYSTEM_PROMPT. Re-run, measure delta.
 6. Adjudicate two labels:
@@ -166,6 +219,28 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
    MIT license.
 RULE: each prompt change measured as a deliberate before/after, never batched.
 RULE: a label change is never a one-file change — label and SYSTEM_PROMPT must agree.
+RULE: the instrument is FROZEN as of the baseline. If the harness itself changes
+later, the old baseline is void and must be re-taken — a delta measured across
+two different instruments is not a delta.
+
+## M4 baseline — frozen reference
+STATUS: not yet taken. Run step 3.
+- Commit SHA:
+- Instrument config: temp=0, n=3, per-case voting, even ties fail, judge
+  advisory on first non-None run
+- Deterministic pass: __/17
+- Per-case verdicts (for case-by-case diffing, not just the total):
+- Missed escalations: majority-level count __ ; intermittent misses caught by
+  the WARNING line __ (a majority pass concealing a real miss still counts)
+- Per-field flip rates at temp=0 (category / urgency / needs_human /
+  trigger_cited): residual variance is a FINDING, not noise to ignore
+- No-decision (None) runs: __ of 51
+- Judge average: __/5 ; do amb_004 and easy_006 still score ~2 now that the
+  judge is pinned?
+- REAL cost and wall-clock: __ in / __ out, __ s. Replaces the step-2
+  projection (~51 runs, ~8 min, ~105k in / ~21k out) — that was scaled from the
+  M3 single-run sweep, never measured. Do not carry a projection into the step-7
+  cost table.
 
 ## Exam concepts covered (CCA-F mapping)
 - D1 Agentic Architecture: workflow vs agent = WHO decides the next step (not
@@ -217,6 +292,17 @@ RULE: a label change is never a one-file change — label and SYSTEM_PROMPT must
 - Vote-shopping as an anti-pattern: rerunning until pass, reporting the best run,
   or raising n until a case passes are all the runtime form of moving the
   standard to fit the result. Same family as widening acceptable-value sets.
+- Baseline discipline: a baseline inherits its authority entirely from the
+  instrument that produced it. Freeze the instrument, then take the number.
+  Change the harness later and the old baseline is VOID, not merely stale — a
+  delta measured across two instruments is not a delta. And never batch two
+  changes: +4 from two edits at once teaches almost nothing, since one could
+  have contributed +5 and the other -1.
+- Failure-mode granularity: an instrument must distinguish KINDS of failure, not
+  just count them. None vs False in this repo (never decided vs decided no) is
+  the worked example — collapsing them sends you to tune a prompt when the bug
+  is in the loop. Same principle behind splitting FN from FP on escalation, and
+  behind erroring on an unknown --case ID instead of reporting 0/0.
 
 ## Python covered (reference only, don't re-teach)
 imports/venv/pip -m; lists vs dicts (index vs key); def/return/if-in pattern;
@@ -225,7 +311,11 @@ __init__.py = package marker; module vs script vs config file; reading traceback
 real; editor→save→REPL-verify rhythm; three terminal "rooms" (PowerShell / >>> /
 Claude Code) and reading the prompt to know which one you're in;
 conditional kwargs (build a dict, add the key only when set) for optional API
-params that must be OMITTED rather than sent as None.
+params that must be OMITTED rather than sent as None; **kwargs spread into a
+call; thin wrappers must FORWARD new params or they become silent holes;
+keyword args over positional at call sites, so a signature change can't rebind
+silently; VS Code terminal recovery (Ctrl+`) and that a new terminal starts
+without the venv active.
 
 ## Missed exam questions — re-run these during final review
 1. Drift direction (M1d Q2): Pydantic Literal wider than the JSON enum produces
@@ -254,6 +344,8 @@ params that must be OMITTED rather than sent as None.
 - README design-decisions section (M4 step 7) should carry, in Ronan's own words:
   agent-vs-workflow, the duplication tripwire, strict needs_human with split
   false-negative/false-positive reporting, acceptable-sets-fixed-at-authoring,
-  judge-as-advisory, the temperature/variance finding, and temperature-as-caller-
-  parameter (instrument vs product). This section is what contract buyers
-  actually read.
+  judge-as-advisory, the temperature/variance finding, temperature-as-caller-
+  parameter (instrument vs product), and per-case-not-per-field voting. This
+  section is what contract buyers actually read.
+- README non-goals should carry: blunt keyword matching on trigger citation, and
+  the judge being uncalibrated rather than a quality score.
