@@ -11,6 +11,8 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   Ronan does NOT hand-type code — that rule is retired.
 - Every milestone: concept brief FIRST (mapped to exam domain) → code as the
   working example → scenario quiz in CCA-F format (2-3 questions).
+- Quizzes are delivered as MULTIPLE CHOICE with distractors, matching exam format.
+  Free-recall phrasing tests a different skill than the exam does.
 - Ronan's deliverables per milestone: explain back the DESIGN (not syntax),
   answer scenario questions, make one design decision with reasoning.
 - Python syntax explained only when Ronan asks. No unprompted syntax lessons.
@@ -29,17 +31,45 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
 - TriageRun metrics dataclass lives in agent.py, not schemas.py: schemas.py holds
   shapes that cross the wire and get validated; TriageRun is local bookkeeping.
 - Model: claude-sonnet-4-6
+- Temperature is a CALLER parameter, not an agent constant. run_triage() takes
+  temperature=None (omit the param, API default applies) or an explicit value;
+  None must never be sent to the API, so build request kwargs conditionally.
+  The eval harness and the judge pin it to 0 because instruments must be
+  repeatable; production temperature remains an OPEN PRODUCT DECISION.
+  Rationale: hardcoding 0 inside the agent lets the test harness make a product
+  decision by accident. Instrument setting and product setting stay in separate
+  hands. README one-liner: "Temperature is a caller parameter, not an agent
+  constant — the eval harness pins it to 0 for repeatability; production behavior
+  remains an open product decision."
+- Voting unit: PER-CASE for the gate. Never gate on a per-field composite,
+  because a composite can pass while no individual run passed — that gates on a
+  synthetic agent instead of the real one. Per-field agreement/flip rates are
+  recorded as DIAGNOSTICS only (they are what pointed at the missing urgency
+  rubric in M3).
+- Baseline is recorded under the FINAL instrument configuration (temperature=0,
+  n=3, per-case voting). NOT temp=0 single-run — otherwise every later delta
+  compares numbers measured with different instruments. Build the instrument,
+  freeze it, then measure everything with it.
 - needs_human scored STRICTLY, always. False negatives (missed escalations)
   reported SEPARATELY from false positives — never blended into one number.
+  This extends to the voting layer: a case that fails to escalate on even 1 of n
+  runs is a probabilistic missed escalation in production and must appear in the
+  false-negative diagnostics even when it passes the gate on majority.
 - Acceptable-value LISTS allowed on category/urgency for explicitly ambiguous
   cases only (3 of 17). Sets fixed at authoring time, NEVER widened to make a
   run pass. Disagreement means either the agent is wrong or the label is wrong.
+- No vote-shopping: never rerun a failed case and report the best run, and never
+  raise n until a case passes. Both are the runtime equivalent of widening
+  acceptable-value sets after the fact — adjusting the measurement standard to
+  fit the observed result.
 - Every dataset case carries a label_rationale.
 - Fifth escalation trigger added: revenue-expanding requests. adv_005 is its
   matched negative test (seat REDUCTION must not fire it).
 - M3 Option A: deterministic field checks GATE the build; the LLM judge is
   advisory — reported prominently but never fails a build. Judges are models and
   therefore noisy; a gate nobody trusts is worse than no gate.
+- Judge runs ONCE per case even under n-run voting, scoring the first run's
+  output. Tripling calls on an uncalibrated advisory signal buys nothing.
 - Trigger-citation check promoted from judge to deterministic (five triggers are
   known strings, no model call needed). Blunt keyword match — acknowledge as a
   limitation in the README non-goals section.
@@ -64,6 +94,20 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
       Both tracks running. Findings below. Quiz 1/2 (missed the
       reproducibility-is-a-property-of-the-instrument question).
 - [ ] M4: reliability first, THEN prompt work, THEN gate/CI/README. See plan below.
+      - [x] step 1: DONE. Temperature parameterized as a caller argument
+            (Option B). agent.py: threaded through BOTH run_triage and
+            run_triage_with_metrics via sampling_kwargs built once outside the
+            loop; no literal temperature in the agent by design.
+            run_evals.py:47 and reasoning_judge.py:79 pin 0. Quiz 1.5/3.
+            Only one messages.create in agent.py, so the every-call-site risk
+            did not apply. Near-miss: parameter existed for one turn while
+            neither caller passed it — a sweep then would have looked measured
+            and sampled at 1.0.
+            DELIBERATE: scripts/run_agent_demo.py stays at API default so its
+            --n flag demonstrates the variance the harness controls for.
+      - [ ] step 2: n-run majority voting in evals/run_evals.py. Concept brief
+            delivered, voting-unit decision made (per-case), quiz 3/3.
+            Handoff prompt written for Claude Code — code not yet generated.
 - [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4
 - [ ] Final 2 days before exam: pure exam review, all five domains, missed
       questions re-run (see "missed questions" list at the bottom)
@@ -96,10 +140,17 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   sys.path bootstrap that scripts/run_agent_demo.py already had.
 
 ## M4 plan — reliability BEFORE prompt work
-1. temperature=0 on the agent (one line in client.messages.create)
+1. DONE. Temperature parameterized on run_triage() (Option B), not hardcoded in
+   the agent. Eval runner and judge pass temperature=0. Verify the parameter
+   reaches EVERY messages.create call inside the loop — a deterministic first
+   turn with stochastic follow-up turns looks more stable while still flipping,
+   which is worse than no fix.
 2. n-run majority voting per case in evals/run_evals.py (commodity code —
-   Claude Code's job; the --n flag on the demo script is the per-case precedent)
-3. Re-baseline and RECORD the number. This is the "before" for everything after.
+   Claude Code's job; the --n flag on the demo script is the per-case precedent).
+   --n defaults to 3. Per-case voting, per-field flip rates as diagnostics,
+   needs_human false-negative flips reported separately from false-positive flips.
+3. Re-baseline and RECORD the number under temp=0 / n=3 / per-case. This is the
+   "before" for everything after.
 4. Fix the fifth trigger's wording so direction beats vocabulary. Re-run, measure delta.
 5. Add an urgency rubric to SYSTEM_PROMPT. Re-run, measure delta.
 6. Adjudicate two labels:
@@ -149,13 +200,32 @@ RULE: a label change is never a one-file change — label and SYSTEM_PROMPT must
   real regression from run-to-run variance; production temperature is a separate
   product decision. Model latency is nondeterministic too (8.9–11.9s observed on
   identical input) — CI timeouts need margin, not an exact expectation.
+- Residual variance: temperature=0 shrinks output variance but does NOT guarantee
+  identical outputs. So temperature=0 and n-run voting are a PAIR, not
+  alternatives: step 1 shrinks the noise, step 2 measures through what's left.
+  Several stable runs are evidence of low variance, not proof of zero variance —
+  and a gate that flakes once a month is the "gate nobody trusts" problem again.
+- Voting unit (per-case vs per-field): per-field majorities can assemble a
+  passing composite that no individual run produced, i.e. gating on a synthetic
+  agent. Per-case is harsher on multi-field cases by pure arithmetic, which is
+  the real tradeoff. Resolution: gate on the honest unit, instrument at the
+  finer grain.
+- Determinism vs correctness: determinism makes defects REPRODUCIBLE, it does not
+  remove them. A deterministic agent citing the wrong trigger cites that same
+  wrong trigger every run (adv_005 is the live proof in this repo), so
+  temperature=0 never makes a correctness check redundant.
+- Vote-shopping as an anti-pattern: rerunning until pass, reporting the best run,
+  or raising n until a case passes are all the runtime form of moving the
+  standard to fit the result. Same family as widening acceptable-value sets.
 
 ## Python covered (reference only, don't re-teach)
 imports/venv/pip -m; lists vs dicts (index vs key); def/return/if-in pattern;
 __init__.py = package marker; module vs script vs config file; reading tracebacks
 (syntax vs name vs import vs API 400); cascading errors — only the FIRST one is
 real; editor→save→REPL-verify rhythm; three terminal "rooms" (PowerShell / >>> /
-Claude Code) and reading the prompt to know which one you're in.
+Claude Code) and reading the prompt to know which one you're in;
+conditional kwargs (build a dict, add the key only when set) for optional API
+params that must be OMITTED rather than sent as None.
 
 ## Missed exam questions — re-run these during final review
 1. Drift direction (M1d Q2): Pydantic Literal wider than the JSON enum produces
@@ -164,6 +234,12 @@ Claude Code) and reading the prompt to know which one you're in.
 2. Temperature/reproducibility (M3 Q2): the answer is "reproducibility is a
    property of the instrument," NOT "lower production temperature too" — that
    changes the product to suit the test.
+   STATUS: answered correctly at M4 step 1 Q2 in disguised form. Keep on the
+   list anyway — the exam likes re-costuming this one.
+3. Residual variance at temperature=0 (M4 step 1 Q1): the objection to trusting
+   single runs is that OUTPUTS can still vary. Latency variance is a DIFFERENT
+   answer, belonging to "CI timeouts need margin." Keep the two separate; a
+   scenario question can bait a swap.
 
 ## Open threads / future case ideas
 - Under-gathering evidence (spotted in the M1c demo): on cust_002's
@@ -178,5 +254,6 @@ Claude Code) and reading the prompt to know which one you're in.
 - README design-decisions section (M4 step 7) should carry, in Ronan's own words:
   agent-vs-workflow, the duplication tripwire, strict needs_human with split
   false-negative/false-positive reporting, acceptable-sets-fixed-at-authoring,
-  judge-as-advisory, and the temperature/variance finding. This section is what
-  contract buyers actually read.
+  judge-as-advisory, the temperature/variance finding, and temperature-as-caller-
+  parameter (instrument vs product). This section is what contract buyers
+  actually read.

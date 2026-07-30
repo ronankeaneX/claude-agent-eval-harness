@@ -85,18 +85,47 @@ class TriageRun:
     api_calls: int
 
 
-def run_triage(ticket_text: str, customer_id: str) -> TriageResult | None:
+def run_triage(
+    ticket_text: str,
+    customer_id: str,
+    temperature: float | None = None,
+) -> TriageResult | None:
     """Run the agent loop on one ticket. Returns a validated TriageResult,
     or None if the agent failed to reach a decision.
 
     Thin wrapper kept for existing callers; see run_triage_with_metrics.
+
+    temperature is forwarded, not defaulted here: if this wrapper silently
+    dropped it, any caller using run_triage would get API-default sampling
+    while believing it had pinned the value.
     """
-    return run_triage_with_metrics(ticket_text, customer_id).result
+    return run_triage_with_metrics(ticket_text, customer_id, temperature).result
 
 
-def run_triage_with_metrics(ticket_text: str, customer_id: str) -> TriageRun:
-    """Same loop as run_triage, but also reports token usage and wall-clock time."""
+def run_triage_with_metrics(
+    ticket_text: str,
+    customer_id: str,
+    temperature: float | None = None,
+) -> TriageRun:
+    """Same loop as run_triage, but also reports token usage and wall-clock time.
+
+    temperature=None -> omit the parameter entirely; the API default applies.
+    temperature=0    -> instrument mode: minimize run-to-run output variance.
+
+    Temperature is a CALLER parameter, not a module constant. The eval harness
+    pins it to 0 because a measuring instrument must be repeatable; production
+    sampling behavior stays an open product decision. Hardcoding 0 here would
+    let the test harness make that product decision by accident.
+    """
     client = anthropic.Anthropic()
+
+    # Built ONCE, outside the loop, then spread into every turn's request.
+    # An empty dict when temperature is None means the key is never sent —
+    # passing temperature=None explicitly would be an API 400.
+    # One call site, one setting: the value cannot drift between turn 1 and turn 6.
+    sampling_kwargs: dict = {}
+    if temperature is not None:
+        sampling_kwargs["temperature"] = temperature
 
     input_tokens = 0
     output_tokens = 0
@@ -121,6 +150,7 @@ def run_triage_with_metrics(ticket_text: str, customer_id: str) -> TriageRun:
             tools=TOOL_DEFINITIONS,
             tool_choice={"type": "auto"},  # Claude DECIDES: a tool, or just talk
             messages=messages,
+            **sampling_kwargs,
         )
 
         # Meter every call, including ones that end in a failure branch below —

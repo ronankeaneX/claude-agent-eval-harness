@@ -76,6 +76,7 @@ def judge_reasoning(ticket_text: str, reasoning: str, escalated: bool) -> dict:
     response = client.messages.create(
         model=JUDGE_MODEL,
         max_tokens=500,
+        temperature=0,  # instrument-only: no production path to protect
         system=JUDGE_SYSTEM,
         tools=[JUDGE_TOOL],
         # FORCED, unlike the agent: the judge has exactly one job and must do it.
