@@ -3,7 +3,8 @@
 ## What this project is
 Support-ticket triage AGENT (not workflow) + evaluation harness.
 Portfolio repo for Ronan Keane (applied AI / contract positioning) AND
-hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29).
+hands-on prep for the CCA-F exam. Exam ~Aug 4, 2026 but RESCHEDULABLE — Ronan has
+explicitly chosen build quality over exam date. Do not compress work to hit Aug 4.
 
 ## Working agreement (instructor mode, revised Jul 27)
 - Exam prep and repo build have EQUAL priority. Both purposes served at every milestone.
@@ -13,11 +14,31 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
   working example → scenario quiz in CCA-F format (2-3 questions).
 - Quizzes are delivered as MULTIPLE CHOICE with distractors, matching exam format.
   Free-recall phrasing tests a different skill than the exam does.
+- File edits are given as explicit FIND / REPLACE blocks with the verbatim
+  current text and the verbatim replacement text. Never "replace the X bullet"
+  or "update the Y section" — Ronan should never have to locate the target by
+  interpretation.
+- SESSION HYGIENE: do NOT ask Ronan to paste this whole file for routine edits.
+  FIND/REPLACE needs only the section being changed. Full-file rewrites are for
+  handoffs, not iteration. Five full pastes is what ended the previous session.
+- Ronan is NOT experienced building agents. Design decisions get framed with the
+  tradeoff explained, and where a decision is really a domain question (support
+  policy, ops judgment) say so — that is where his 20+ years of B2B operations
+  experience is the actual expertise, not the Python.
 - Ronan's deliverables per milestone: explain back the DESIGN (not syntax),
   answer scenario questions, make one design decision with reasoning.
 - Python syntax explained only when Ronan asks. No unprompted syntax lessons.
 - Never touch .env or .gitignore. Never commit secrets.
 - Flag open items neutrally. No pressure language about outstanding deliverables.
+
+## Dataset shape (confirmed on disk)
+Top-level list of case objects. Field names, exactly:
+  case_id, ticket_text, customer_id, expected_category, expected_urgency,
+  expected_needs_human, label_rationale
+There is NO nested `labels` object. Ambiguous cases carry LIST-valued
+expectations (e.g. amb_001 expected_urgency accepts ['medium','high']), so any
+code or display that compares expected vs actual must reuse the scorer's
+`_matches` rather than reimplementing comparison.
 
 ## Tech decisions (settled — do not relitigate)
 - Python for everything (single toolchain; TS port is future work)
@@ -52,195 +73,287 @@ hands-on prep for the CCA-F exam. Exam date: ~Aug 4, 2026 (postponed from Jul 29
 - Voting unit: PER-CASE for the gate. Never gate on a per-field composite,
   because a composite can pass while no individual run passed — that gates on a
   synthetic agent instead of the real one. Per-field agreement/flip rates are
-  recorded as DIAGNOSTICS only (they are what pointed at the missing urgency
-  rubric in M3).
-- Even ties FAIL. No majority means no verdict to gate on. Never fires at the
-  n=3 default; cheap insurance for anyone running --n 4.
+  recorded as DIAGNOSTICS only.
+- Even ties FAIL. No majority means no verdict to gate on.
 - None results (safety stop or failure to decide) count as FAILED runs for
   voting, and are a DISTINCT value in flip detection — never folded into False.
   "Never decided" is a loop/safety-stop defect; "decided no" is a judgment
-  defect. Collapsing them makes a MAX_TURNS bug read as an escalation bug.
-- Baseline is recorded under the FINAL instrument configuration (temperature=0,
-  n=3, per-case voting). NOT temp=0 single-run — otherwise every later delta
-  compares numbers measured with different instruments. Build the instrument,
-  freeze it, then measure everything with it.
+  defect. In the confusion-direction readout None prints as NO-DECISION, never
+  as the literal None, which would read as if the agent chose null.
+- THE DATASET IS PART OF THE INSTRUMENT. Labels are the answer key; the answer
+  key is measuring apparatus, not system under test. Changing ANY label voids the
+  current baseline and requires a re-baseline before further deltas mean
+  anything. Price the ~10 min sweep into any label decision.
+- LABEL ADJUDICATION MUST BE BLIND to agent behavior. Decide a label on its own
+  merits, in writing, BEFORE looking at what the agent chose on that case.
+  Deciding afterward is fitting the answer key to the behavior — same family as
+  widening acceptable-value sets to make a run pass. If agent values have already
+  been seen, say so and treat the adjudication as contaminated.
+- URGENCY IS ANCHORED TO TIME SENSITIVITY (decided, pending label audit).
+  Rejected: consequence severity (collapses into needs_human — two fields
+  measuring one thing) and observable ticket features (a lookup table, not
+  judgment, which undercuts what this repo demonstrates).
+  needs_human answers WHO handles it; urgency answers WHEN. All four quadrants
+  must be populatable, which is the test that two fields measure different things:
+    not urgent / no human  — feature question
+    urgent    / no human   — password reset blocking a live demo
+    not urgent / human     — contract language review
+    urgent    / human      — payment failing now on an enterprise account
+  Anchor phrase: "how fast does this get worse if nobody touches it."
+  Hours = high, days = medium, no time pressure = low.
+  CAVEAT: if the label audit shows the labels encode SEVERITY rather than time
+  sensitivity, time-sensitivity is still the better design but adopting it means
+  changing labels, which voids the baseline. Decide with that cost visible.
 - needs_human scored STRICTLY, always. False negatives (missed escalations)
   reported SEPARATELY from false positives — never blended into one number.
   This extends to the voting layer: a case that fails to escalate on even 1 of n
   runs is a probabilistic missed escalation in production and must appear in the
-  false-negative diagnostics even when it passes the gate on majority. The
-  harness prints an explicit WARNING when a majority pass conceals a real miss —
-  majority voting exists to absorb intermittent failure, and escalation is the
-  one field where absorbing it is exactly wrong.
+  false-negative diagnostics even when it passes the gate on majority.
+- WARNING vs NOTE severity split. WARNING is RESERVED for the false-NEGATIVE
+  direction: a customer who needed a human did not get one — a SAFETY signal.
+  The false-POSITIVE direction gets a distinct lower-severity NOTE: a human
+  looked at something they did not need to — a COST signal. Equal visual weight
+  trains the reader to skim past the one that matters.
 - Acceptable-value LISTS allowed on category/urgency for explicitly ambiguous
   cases only (3 of 17). Sets fixed at authoring time, NEVER widened to make a
   run pass. Disagreement means either the agent is wrong or the label is wrong.
 - No vote-shopping: never rerun a failed case and report the best run, and never
-  raise n until a case passes. Both are the runtime equivalent of widening
-  acceptable-value sets after the fact — adjusting the measurement standard to
-  fit the observed result.
+  raise n until a case passes.
 - Every dataset case carries a label_rationale.
-- Fifth escalation trigger added: revenue-expanding requests. adv_005 is its
-  matched negative test (seat REDUCTION must not fire it).
+- Fifth escalation trigger: revenue-expanding requests. adv_005 is its matched
+  negative test (seat REDUCTION must not fire it).
 - M3 Option A: deterministic field checks GATE the build; the LLM judge is
-  advisory — reported prominently but never fails a build. Judges are models and
-  therefore noisy; a gate nobody trusts is worse than no gate.
+  advisory — reported prominently but never fails a build.
 - Judge runs ONCE per case even under n-run voting, scoring the first NON-NONE
   run's output and recording which run index was judged; skipped only when ALL n
-  runs are None. Tripling calls on an uncalibrated advisory signal buys nothing.
+  runs are None.
 - Trigger-citation check promoted from judge to deterministic (five triggers are
-  known strings, no model call needed). Blunt keyword match — acknowledge as a
-  limitation in the README non-goals section.
+  known strings). Blunt keyword match — acknowledge in README non-goals.
 - Unknown --case ID exits 2 rather than reporting 0/0. An instrument must not
   report a clean result for a measurement it never took.
+- DIAGNOSTIC RUNS ARE TARGETED, NOT FULL SWEEPS. To check n specific cases use
+  `--case <id> --n 3` per case (~4 agent calls each, ~2 min, ~8k tokens for four
+  cases) instead of a 51-run sweep (9.6 min, ~106k tokens). Full sweeps are for
+  measuring deltas against the baseline, not for answering diagnostic questions.
 
 ## Curriculum state
 - [x] M0: Scaffold — venv, .env hygiene, smoke test w/ forced tool use
 - [x] M0b: GitHub remote connected, repo public and verified (no .env)
 - [x] M1a: schemas.py — Pydantic models, Literal validation confirmed via REPL
 - [x] M1b: tools.py — FAKE_CUSTOMERS/FAKE_OUTAGES stubs, structured not-found errors
-- [x] M1c: agent.py — the loop. Verified end-to-end: agent chose
-      get_customer_history, consumed the tool_result, hit the natural stop
-      (record_triage), not MAX_TURNS. TriageRun metrics + --n variance flag added.
-      Explain-back and 3/3 scenario quiz completed.
-- [x] M1d: tests/test_schema_sync.py — drift tripwire, verified RED then GREEN.
-      pytest introduced. Quiz 1/2 (missed the silent-drift-direction question).
+- [x] M1c: agent.py — the loop, verified end-to-end. Quiz 3/3.
+- [x] M1d: tests/test_schema_sync.py — drift tripwire, RED then GREEN. Quiz 1/2.
 - [x] M2: evals/dataset/tickets.json — 17 cases (6 easy, 4 ambiguous,
-      5 adversarial, 2 out-of-scope). Escalation split roughly 50/50 so an agent
-      can't score well by always guessing the majority. All labels reviewed and
-      endorsed by Ronan; easy_005 flipped to needs_human=true with the matching
-      SYSTEM_PROMPT trigger added. Quiz 2/2.
+      5 adversarial, 2 out-of-scope). Escalation split ~50/50. Quiz 2/2.
 - [x] M3: evals/scoring.py + evals/judges/reasoning_judge.py + evals/run_evals.py.
-      Both tracks running. Findings below. Quiz 1/2 (missed the
-      reproducibility-is-a-property-of-the-instrument question).
-- [ ] M4: reliability first, THEN prompt work, THEN gate/CI/README. See plan below.
-      - [x] step 1: DONE. Temperature parameterized as a caller argument
-            (Option B). agent.py: threaded through BOTH run_triage and
-            run_triage_with_metrics via sampling_kwargs built once outside the
-            loop; no literal temperature in the agent by design.
+      Both tracks running. Quiz 1/2.
+- [ ] M4: reliability first, THEN prompt work, THEN gate/CI/README.
+      - [x] step 1: temperature parameterized as a caller argument (Option B).
             run_evals.py:47 and reasoning_judge.py:79 pin 0. Quiz 1.5/3.
-            Only one messages.create in agent.py, so the every-call-site risk
-            did not apply. Near-miss: parameter existed for one turn while
-            neither caller passed it — a sweep then would have looked measured
-            and sampled at 1.0.
-            DELIBERATE: scripts/run_agent_demo.py stays at API default so its
-            --n flag demonstrates the variance the harness controls for. Not an
-            oversight; document it as a demo.
-      - [x] step 2: DONE. --n majority voting (default 3), PER-CASE on
-            deterministic_pass. Even ties FAIL: no majority means no verdict.
-            None results count as failed runs and are a DISTINCT value in flip
-            detection, not folded into False — "never decided" (loop/safety-stop
-            defect) vs "decided no" (judgment defect) must not be collapsed.
-            Diagnostics: per-field flip rates with offending case IDs +
-            needs_human FN/FP split + an explicit WARNING when a majority pass
-            conceals a real missed escalation. --case with unknown ID exits 2
-            rather than reporting 0/0.
-            Verified OFFLINE with synthetic scored dicts (no API calls):
-            2-of-3 passes, 1-of-3 fails, even tie fails, urgency-only flip
-            detected, intermittent miss shows false_negative=False /
-            any_false_negative=True, None run flips all four fields.
-            CLI: --help correct, --n 0 and --case nope_999 rejected. Quiz 3/3.
-            VERIFIED ON DISK (run_evals.py:93-95, 119, 121): judge scores the
-            first NON-NONE run via a `judged_result is None` first-wins guard;
-            judged_index is 1-based and stored on the row at :113 regardless of
-            --judge, so diagnostics always report which run was or would have
-            been judged. Skipped only when every run returned None (:119).
-            PROJECTED cost for a --n 3 sweep: ~51 runs, ~8 min, ~105k in /
-            ~21k out, +17 calls with --judge. This is SCALED FROM the M3
-            single-run sweep, not measured. Replace with real numbers after
-            step 3.
-      - [ ] step 3: ACTIVE. Re-baseline. See "M4 baseline — frozen reference".
-- [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4
+            Near-miss worth remembering: the parameter existed for one turn while
+            neither caller passed it — a sweep then would have LOOKED measured and
+            sampled at 1.0.
+            DELIBERATE: scripts/run_agent_demo.py stays at API default so its --n
+            flag demonstrates the variance the harness controls for.
+      - [x] step 2: --n majority voting (default 3), PER-CASE. Even ties fail.
+            None distinct from False. Diagnostics: per-field flip rates +
+            needs_human FN/FP split + WARNING on concealed misses. Quiz 3/3.
+            LESSON: Claude Code's PROSE described judge selection as "run 1's
+            output," which read as run-1-only; the CODE was correct (first
+            non-None). Verify against disk, not against the summary.
+      - [x] step 3: baseline 8/17 taken 2026-07-30. See frozen reference below.
+            Quiz 2/3 (missed baseline-replacement — see missed questions #4).
+            Habit worth keeping: a live single-case smoke test ran BEFORE the full
+            sweep because the voting code had only been exercised against offline
+            fakes. Cheap validation of a new code path before spending a sweep.
+      - [~] step 4: IN PROGRESS. Urgency. Sequence revised — see plan below.
+            DONE: confusion-direction readout added to evals/run_evals.py
+            (readout only; scoring.py and agent.py untouched, so the baseline is
+            NOT void). Prints expected vs actual per field, only where the agent
+            missed on >=1 run; tallies values in first-seen order with counts so
+            a flip shows its split; reuses the scorer's `_matches` so list-valued
+            ambiguous expectations can't be displayed as wrong when the gate
+            counted them as a pass (cross-checked against score_case on a
+            list-valued case across three value combinations); None prints as
+            NO-DECISION; cases that pass the gate still appear if any run missed,
+            with a gate column for context. Verified offline; pytest 2 passed.
+            check_voting.py fakes updated to carry expected_* keys (test-fixture
+            gap, not a product one).
+            RESOLVED 2026-07-30: the stray Cyrillic fragment reported in Claude
+            Code's prose never reached disk. Audited run_evals.py (only non-ASCII
+            is one em dash in the module docstring, line 7) and all tracked files
+            via git ls-files. Zero hits repo-wide. Fragment deliberately NOT
+            quoted here so the repo stays ASCII-clean and the check greps clean.
+            NEXT: blind label audit (see plan step 4).
+- [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4. Scope it SMALLER
+      than Repo 1 deliberately; it is a separate multi-day build.
 - [ ] Final 2 days before exam: pure exam review, all five domains, missed
-      questions re-run (see "missed questions" list at the bottom)
+      questions re-run.
 
-## M3 findings — baseline BEFORE any fixes
-- Deterministic pass: 7/17, then 8/17 on IDENTICAL conditions (the judge runs
-  after triage and cannot affect it). ~18% of the suite flipped verdict between
-  runs. NEITHER NUMBER IS THE REAL SCORE.
-- ROOT CAUSE: the agent runs at the API default temperature (1.0). Fix is
-  temperature=0 for eval runs plus n-run majority voting in the eval runner.
-- REPRODUCIBLE across both runs (real defects, not variance):
-  * 0 missed escalations both runs — the policy errs safe. README headline claim.
-  * Over-escalations: easy_002, adv_003, adv_005 — identical set both runs.
-  * adv_005 fails escalation EVERY run: the agent keyword-matches "seats"/"plan"
-    against the revenue trigger instead of reading DIRECTION. easy_006
-    (cancellation) passes, isolating the cause to seat/plan vocabulary.
-    This is a bug in the trigger wording, found by a case added one turn earlier.
-  * Urgency fails on 7 cases spread across every case type. SYSTEM_PROMPT
-    defines escalation criteria in detail but gives NO low/medium/high rubric —
-    the agent is guessing at a dimension that was never defined.
-    General lesson: evals mostly find PROMPT bugs, not model bugs.
-  * easy_005 category fail and amb_003 trigger_cited fail: both reproducible.
-- Judge: 2.9/5 average, advisory, UNCALIBRATED — use as relative ranking between
-  cases, not as an absolute quality measure. It caught amb_004 and easy_006
-  passing deterministically while scoring 2 (right answer, weak reasoning), which
-  is precisely the gap the judge exists to surface.
-  CAVEAT (found at M4 step 1): the judge itself ran at temperature 1.0, so part
-  of the 2.9/5 spread may be INSTRUMENT NOISE rather than output quality. A judge
-  at 1.0 can score the same reasoning differently on re-run. The amb_004 /
-  easy_006 finding needs re-verification now that the judge is pinned to 0 —
-  that finding is load-bearing in the README argument for why an advisory judge
-  earns its cost.
-- Cost per full sweep: ~35k input / ~7k output tokens; 158s without judge,
-  234s with judge (17 extra calls).
-- One defect fixed during the run: evals/run_evals.py was missing the repo-root
-  sys.path bootstrap that scripts/run_agent_demo.py already had.
+## Progress estimate (as of session end 2026-07-30)
+Repo 1 roughly 55-60% done. Remaining: step 4 (urgency, 45-90 min now that the
+label question is open), step 5 (trigger wording, 30-45 min), step 6 (label
+adjudications, 45-75 min), step 7 (gate + CI + cost table + README + license +
+per-case error handling, 2-3 hrs). Step 7 is most of what is left and the
+highest-risk: GitHub Actions needs a reduced sweep mode (a 51-run sweep per push
+is untenable) and that design decision is unmade. The README is the highest-value
+artifact for the contract-buyer purpose and must be in Ronan's voice — budget an
+hour, do not compress. Most cuttable work is step 6; documenting the two labels
+as open questions with reasoning reads BETTER to a technical buyer than resolving
+them silently.
+
+## M4 baseline — frozen reference
+STATUS: TAKEN 2026-07-30. Raw output at evals/baselines/2026-07-30-n3-temp0.txt.
+VALIDITY: still valid. The confusion-direction readout added afterward is a
+readout change; re-running would reproduce 8/17. Will be VOID if any label changes.
+- Commit SHA: 9cecd2d (HEAD at sweep time; code landed in f633cd4, docs on top)
+- Instrument config: temp=0, n=3, per-case voting, even ties fail, judge advisory
+  on first non-None run
+- Deterministic pass: 8/17. SAME EIGHT CASES that passed M3's second run, so
+  M3's 8/17 was modal and 7/17 was the outlier. The score did not move; the TRUST
+  in it did. That was the entire point of steps 1-2.
+- PASSING (8): easy_001, easy_004, easy_006, amb_001, amb_004, adv_001, adv_004,
+  oos_001
+- FAILING (9): easy_002, easy_003, easy_005, amb_002, amb_003, adv_002, adv_003,
+  adv_005, oos_002
+- Missed escalations: 0 at majority level AND 0 false-negative flips across all
+  51 runs. Defensible README headline, backed by 51 runs not 2.
+- Over-escalations: 3 — easy_002, adv_003, adv_005 (identical set to M3)
+- Urgency wrong on 8 of 17. Seven fail 0/3 (easy_002, easy_003, easy_005,
+  amb_002, adv_002, adv_003, oos_002) plus adv_005 0/3 with flips. Consistently
+  wrong at temp 0, not inconsistently guessing.
+- Per-field flip rates at temp=0: category 2/17 (amb_004, oos_002), urgency 1/17
+  (adv_005), needs_human 1/17 (oos_001), trigger_cited 1/17 (oos_001). Variance
+  COLLAPSED from ~18% verdict flips but did not vanish — temperature was the
+  dominant source, not the only one.
+- oos_001: escalated on 1 of 3 runs, absorbed by the majority vote, logged as a
+  false-POSITIVE flip. WARNING did not fire (watches FN only) — resolved by the
+  NOTE decision.
+- No-decision (None) runs: 0 of 51. The safety stop never fired once.
+- Judge: 2.7/5, 17/17 judged. amb_004 scored 1 (was 2) — finding HOLDS and is
+  sharper: right answer, weakest reasoning in the suite, passes the gate. Best
+  argument in the repo for an advisory judge. easy_006 scored 3 (was 2) — that
+  half of the M3 claim WAS instrument noise and is RETRACTED. One case, not two.
+  oos_002 (prompt injection) scored 5.
+- REAL cost: 106,483 in / 20,725 out over 51 runs, 574.5s (9.6 min), 11.3s per
+  run. Input-token projection was accurate; the 13-min estimate extrapolated from
+  a single-case smoke test was ~35% HIGH — one case is a poor pace basis. USE
+  THESE NUMBERS in the step-7 cost table, never a projection.
+
+## M4 step 4 — the label-integrity finding (READ THIS BEFORE WRITING A RUBRIC)
+The original diagnosis was "SYSTEM_PROMPT defines escalation in detail but gives
+no low/medium/high rubric." That is still true but is NOT the whole story.
+
+Reading the label_rationale fields of the seven urgency failures: SIX never argue
+urgency at all. They justify escalation (or escalation + category) and appear to
+have taken an urgency value as a default while the author was thinking about
+needs_human:
+  easy_002  low     — rationale argues escalation only ("no trigger fires")
+  easy_003  medium  — escalation only ("money lost, regardless of amount")
+  easy_005  medium  — escalation only (revenue trigger)
+  amb_002   medium  — escalation only ("money lost, so escalation is strict True")
+  adv_003   medium  — escalation + category, not urgency
+  oos_002   medium  — escalation only (security concern)
+By contrast the cases that PASS urgency 3/3 were reasoned about explicitly:
+  easy_004  "Medium rather than high because it is one feature, not total loss."
+  amb_003   "Urgency is strictly high: enterprise customer, widespread access loss."
+  oos_001   "low urgency rather than forcing it into a support category."
+IMPLICATION: writing a rubric to make the agent match those six could be fitting
+the prompt to weak labels. Audit the labels first, blind.
+
+adv_002 IS THE EXCEPTION THAT MATTERS: its rationale DOES argue urgency ("furious
+tone, cosmetic issue... tests whether anger inflates urgency") and it still fails
+0/3. That is a genuine agent defect on a purpose-built case.
+
+UNCONFIRMED HYPOTHESIS (inference, not measurement): the agent may couple urgency
+to escalation — escalate, therefore high. Supporting pattern: four failures share
+expected_needs_human=true with expected_urgency=medium (easy_003, easy_005,
+amb_002, oos_002), and all four `high` labels pass 3/3 (amb_003, amb_004,
+adv_001, adv_004), which would pass for free under that coupling. The
+confusion-direction readout now exists precisely to confirm or kill this. The fix
+differs entirely by answer: coupling means the rubric must DECOUPLE urgency from
+needs_human; tone-driven (adv_002's signature) means the rubric must say tone does
+not set urgency. Different sentences, measured separately.
 
 ## M4 plan — reliability BEFORE prompt work
-1. DONE. Temperature as a caller parameter (Option B), not an agent constant.
-   See curriculum state for details.
-2. DONE. --n majority voting, per-case. See curriculum state for details.
-3. ACTIVE. Re-baseline and RECORD under the FROZEN instrument config
-   (temp=0 / n=3 / per-case / judge advisory on first non-None run).
-   Prerequisites before spending the calls:
-   - - judge scores the first NON-NONE run: VERIFIED ON DISK, no change needed.
-     run_evals.py:93-95 first-wins guard, :119 skip-only-if-all-None,
-     :113 judged_index stored regardless of --judge.
-   - COMMIT first. The baseline must be attributable to a SHA or "we went from
-     X to Y" is unfalsifiable.
-   Command: python evals\run_evals.py --n 3 --judge
-   Record into "M4 baseline — frozen reference" below. Include --judge: the M3
-   judge finding was collected at temperature 1.0 and needs re-verification.
-   Expect roughly 7-8/17. MATERIALLY HIGHER means the voting logic is being
-   generous, not that the agent improved — no defect has been touched yet.
-4. Fix the fifth trigger's wording so direction beats vocabulary. Re-run, measure delta.
-5. Add an urgency rubric to SYSTEM_PROMPT. Re-run, measure delta.
+1. DONE. Temperature as a caller parameter (Option B).
+2. DONE. --n majority voting, per-case.
+3. DONE 2026-07-30. Baseline 8/17.
+ORDER SWAPPED after reading the baseline table: URGENCY GOES FIRST, because every
+case the trigger fix touches ALSO fails urgency, so the trigger fix alone converts
+ZERO cases and a correct fix would look like a no-op at case level.
+4. (was 5) IN PROGRESS. Urgency. Revised sub-sequence:
+   a. [x] Confusion-direction readout (done, readout only, baseline valid)
+   b. [!] BLIND AUDIT CONTAMINATED 2026-07-30. A text-only extract command was
+          delegated to Claude Code, which read labels, label_rationale, AND
+          baseline agent behavior, then adjudicated all six FROM agent behavior
+          ("the agent rates urgency above low... the label is wrong"). Ronan read
+          the output, so case-by-case blindness is unrecoverable on these six.
+          DISCARDED: its label-problem vs agent-problem split, which was sorted
+          by whether the agent's answer looked defensible.
+          KEPT (text-level, agent-independent): easy_005 has an explicit "before
+          Monday" deadline; easy_002 is a recovery-address change to a new
+          domain; oos_002 is an active injection attempt.
+          LESSON: blindness is an ACCESS property, not an instruction. Do not ask
+          a tool with repo-wide read access to not look. Extract the field subset
+          to a temp file first, then audit from that.
+          REVISED PROCEDURE (policy-first, replaces case-by-case):
+            i.   Write the urgency rubric at PRINCIPLE level, citing no case.
+                 Anchor: how fast does this get worse if nobody touches it.
+                 Hours=high, days=medium, no time pressure=low. Commit before
+                 touching the dataset.
+            ii.  Apply it mechanically to ALL 17 cases. Auditing only the six
+                 would make the audit SAMPLE agent-determined, independent of
+                 the contamination.
+            iii. Out-of-dataset test is mandatory, not optional: the rubric must
+                 classify tickets not in the suite or it is transcription.
+          RESIDUAL RISK, recorded not cleaned: the rubric is written by someone
+          who has seen the contaminated framing.
+   c. [ ] If ANY label changed -> RE-BASELINE. 8/17 is void. Record new SHA.
+          If none changed, 8/17 stands.
+   d. [ ] Targeted diagnostic runs to confirm/kill the coupling hypothesis:
+          `--case easy_003 --n 3`, same for easy_005, amb_002, oos_002, plus
+          adv_002 for the tone hypothesis. ~15 agent calls, not a full sweep.
+   e. [ ] Write the rubric, targeted at the mechanism actually confirmed.
+   f. [ ] Full sweep, measure delta.
+   PRE-REGISTERED PREDICTION (recorded before the label finding, DO NOT REVISE):
+   +4 cases -> 12/17, from easy_003, amb_002, adv_002, oos_002 — the four failing
+   ONLY on urgency. ANNOTATION: this assumed urgency was purely a prompt gap. The
+   label-integrity finding puts that premise in question, so the prediction is
+   likely wrong. Leaving it as recorded — a prediction that misses because its
+   PREMISE was wrong is a finding about the premise, which is the entire reason
+   for writing predictions down first.
+5. (was 4) Fix the fifth trigger's wording so direction beats vocabulary. Re-run.
+   PRE-REGISTERED PREDICTION: adv_005 esc goes 0/3 -> 3/3. Case-level movement
+   depends on whether step 4 fixed its urgency. READ THIS DELTA AT FIELD LEVEL.
+   easy_002 and adv_003 fire on different triggers, unaffected, remain for step 6.
 6. Adjudicate two labels:
    - easy_002 (email address change): agent over-escalates, plausibly reading it
      as an account-takeover vector. Defensible — the label may be wrong, not the
-     agent. If accepted, the security trigger must be extended to credential-change
+     agent. If accepted, the security trigger must extend to credential-change
      requests so label and policy agree.
-   - easy_005: run `python evals/run_evals.py --case easy_005` and look at the
-     actual output before deciding. This case was rewritten recently, so a
-     rewrite error is as likely as an agent error.
+   - easy_005: baseline shows category 0/3 AND urgency 0/3 but escalation 3/3.
+     Rewritten recently, so a rewrite error is as likely as an agent error.
+   NOTE: easy_002 and easy_005 also appear in the step 4b audit list. Do not
+   adjudicate the same label twice on different grounds — if 4b resolves them,
+   step 6 shrinks accordingly.
 7. Regression gate (pass band or majority-vote threshold, NOT a single-run hard
-   threshold — it would flake), GitHub Actions CI, cost/latency table, README,
-   MIT license.
+   threshold — it would flake), GitHub Actions CI (needs a REDUCED sweep mode;
+   full 51-run sweep per push is untenable — design decision unmade),
+   cost/latency table, README, MIT license, per-case error handling in the harness
+   (a sweep that dies mid-run currently loses everything; already happened once).
 RULE: each prompt change measured as a deliberate before/after, never batched.
+RULE: write the PREDICTION down BEFORE running. Recorded afterward it is
+rationalization, not measurement.
 RULE: a label change is never a one-file change — label and SYSTEM_PROMPT must agree.
-RULE: the instrument is FROZEN as of the baseline. If the harness itself changes
-later, the old baseline is void and must be re-taken — a delta measured across
-two different instruments is not a delta.
-
-## M4 baseline — frozen reference
-STATUS: not yet taken. Run step 3.
-- Commit SHA:
-- Instrument config: temp=0, n=3, per-case voting, even ties fail, judge
-  advisory on first non-None run
-- Deterministic pass: __/17
-- Per-case verdicts (for case-by-case diffing, not just the total):
-- Missed escalations: majority-level count __ ; intermittent misses caught by
-  the WARNING line __ (a majority pass concealing a real miss still counts)
-- Per-field flip rates at temp=0 (category / urgency / needs_human /
-  trigger_cited): residual variance is a FINDING, not noise to ignore
-- No-decision (None) runs: __ of 51
-- Judge average: __/5 ; do amb_004 and easy_006 still score ~2 now that the
-  judge is pinned?
-- REAL cost and wall-clock: __ in / __ out, __ s. Replaces the step-2
-  projection (~51 runs, ~8 min, ~105k in / ~21k out) — that was scaled from the
-  M3 single-run sweep, never measured. Do not carry a projection into the step-7
-  cost table.
+RULE: the instrument is FROZEN as of the baseline. Distinguish INSTRUMENT from
+READOUT. Instrument = anything that produces or transforms a number: scoring,
+voting, gate thresholds, temperature, n, AND THE LABELS. Change any of those and
+the old baseline is VOID and must be re-taken. Readout = how existing numbers are
+DISPLAYED: warning lines, formatting, added labels, confusion-direction output.
+Additive readout changes do not void a baseline, because no recorded value moves.
+Test: would re-running the old sweep under the new code produce a different
+NUMBER? If yes, void. If it only prints differently, keep.
 
 ## Exam concepts covered (CCA-F mapping)
 - D1 Agentic Architecture: workflow vs agent = WHO decides the next step (not
@@ -248,104 +361,148 @@ STATUS: not yet taken. Run step 3.
   tool_choice; agent = goal + tools + loop + termination.
 - D1 stop_reason as the branch point: "tool_use" = keep looping, "end_turn" =
   Claude stopped without deciding, "max_tokens"/other = reply is unreliable.
-  Two terminations and they are NOT the same: NATURAL stop is the finish-line
-  tool (record_triage called → return), SAFETY stop is the MAX_TURNS cap.
-  Reaching the safety stop is a failure signal, not a normal exit.
+  NATURAL stop is the finish-line tool (record_triage called → return); SAFETY
+  stop is the MAX_TURNS cap. Reaching the safety stop is a failure signal.
 - D4 Tool Design: JSON Schema basics; structured errors from tools (return error
-  dicts, don't crash — a raised exception kills the loop, a returned error
-  informs it); tools-as-forms trick for structured output; the tool_result block
-  must quote back Claude's tool_use id, and BOTH sides get appended each round
-  (assistant's request, then results as a user message).
-- Context Management: input tokens COMPOUND across loop turns (each round
-  re-sends system prompt + all tool definitions + full history); output tokens
-  don't. Verbose tool results are a tax paid on every subsequent turn.
-  MAX_TURNS protects the bill as well as the logic.
+  dicts, don't crash — a raised exception kills the loop, a returned error informs
+  it); tools-as-forms trick for structured output; the tool_result block must
+  quote back Claude's tool_use id, and BOTH sides get appended each round.
+- Context Management: input tokens COMPOUND across loop turns; output tokens
+  don't. Verbose tool results are a tax paid on every subsequent turn. MAX_TURNS
+  protects the bill as well as the logic.
 - Evals: deterministic vs judge tracks — stable structured fields get exact-match
   checks, free-text fields get an LLM judge; push everything possible into the
-  deterministic column. Golden dataset taxonomy (easy/ambiguous/adversarial/
-  out-of-scope) and why an all-easy suite scores 96% and predicts nothing.
-  Fixture consistency rule: each case must contain exactly the intended signals
-  and no accidental ones, or you measure the model's response to an accident.
-  Drift asymmetry: Pydantic WIDER than the JSON enum = silent misclassification;
-  NARROWER = loud ValidationError. Judge failure modes: verbosity bias,
-  self-preference, position bias. Tests (static, free, deterministic) vs evals
-  (model judgment, costs calls, nondeterministic).
-- Reproducibility: it is a property of the MEASURING INSTRUMENT, not of the
-  system under test. Measure at temperature 0 so the harness can distinguish a
-  real regression from run-to-run variance; production temperature is a separate
-  product decision. Model latency is nondeterministic too (8.9–11.9s observed on
-  identical input) — CI timeouts need margin, not an exact expectation.
+  deterministic column. Golden dataset taxonomy and why an all-easy suite scores
+  96% and predicts nothing. Fixture consistency rule. Drift asymmetry: Pydantic
+  WIDER than the JSON enum = silent misclassification; NARROWER = loud
+  ValidationError. Judge failure modes: verbosity bias, self-preference, position
+  bias. Tests (static, free, deterministic) vs evals (model judgment, costs
+  calls, nondeterministic).
+- Reproducibility is a property of the MEASURING INSTRUMENT, not the system under
+  test. Measure at temperature 0 so the harness can distinguish a real regression
+  from run-to-run variance; production temperature is a separate product decision.
+  Latency is nondeterministic too (8.9–11.9s on identical input) — CI timeouts
+  need margin.
 - Residual variance: temperature=0 shrinks output variance but does NOT guarantee
-  identical outputs. So temperature=0 and n-run voting are a PAIR, not
-  alternatives: step 1 shrinks the noise, step 2 measures through what's left.
-  Several stable runs are evidence of low variance, not proof of zero variance —
-  and a gate that flakes once a month is the "gate nobody trusts" problem again.
+  identical outputs, so temp=0 and n-run voting are a PAIR, not alternatives.
+  MEASURED here: ~18% verdict flips at temp 1.0 collapsed to 4 cases flipping a
+  single field each at temp 0.
+- Consistent-wrong vs inconsistent-wrong is a DIAGNOSTIC SIGNATURE. Wrong on
+  every run at temp 0 points at a missing or undefined instruction (prompt bug).
+  Varying run to run points at genuine ambiguity in the case or the label. You
+  cannot tell these apart without a repeatable instrument — which is why
+  reliability work comes BEFORE prompt work.
+- A fail COUNT is not a diagnosis; you need the CONFUSION DIRECTION. Knowing
+  urgency failed 8/17 does not tell you which way it was wrong, and the fix
+  differs entirely by direction. An instrument that reports only pass/fail forces
+  you to infer, and inference gets recorded as fact.
+- THE ANSWER KEY IS PART OF THE INSTRUMENT. Labels are not ground truth handed
+  down from outside; they were authored, and they can be wrong or
+  under-considered. Two consequences: (1) changing a label voids a baseline
+  exactly as changing the scorer would; (2) label adjudication must be BLIND to
+  model behavior, or you are fitting the key to the output. A rubric written by
+  reading the answer key is teaching to the test — it measures transcription, not
+  policy. The distinction that matters: articulating the labels' INTENDED POLICY
+  as a generalizable principle is legitimate; enumerating case-specific rules
+  that happen to satisfy 17 examples is overfitting. Test: would the rubric
+  classify a ticket that is not in the dataset?
+- Orthogonality as a design test for multi-field outputs: if two fields cannot
+  populate all four quadrants of their cross-product, they are measuring one
+  thing and an eval scoring both looks broader than it is. needs_human (WHO) vs
+  urgency (WHEN) passes; needs_human vs consequence-severity does not.
 - Voting unit (per-case vs per-field): per-field majorities can assemble a
-  passing composite that no individual run produced, i.e. gating on a synthetic
-  agent. Per-case is harsher on multi-field cases by pure arithmetic, which is
-  the real tradeoff. Resolution: gate on the honest unit, instrument at the
-  finer grain.
+  passing composite that no individual run produced. Gate on the honest unit,
+  instrument at the finer grain. PAYOFF observed: the trigger fix moves a FIELD
+  (adv_005 esc 0/3 -> 3/3) while the case verdict stays FAIL — without per-field
+  diagnostics a correct fix reads as a no-op.
 - Determinism vs correctness: determinism makes defects REPRODUCIBLE, it does not
-  remove them. A deterministic agent citing the wrong trigger cites that same
-  wrong trigger every run (adv_005 is the live proof in this repo), so
-  temperature=0 never makes a correctness check redundant.
+  remove them.
 - Vote-shopping as an anti-pattern: rerunning until pass, reporting the best run,
-  or raising n until a case passes are all the runtime form of moving the
-  standard to fit the result. Same family as widening acceptable-value sets.
+  raising n until a case passes — all the runtime form of moving the standard to
+  fit the result.
 - Baseline discipline: a baseline inherits its authority entirely from the
-  instrument that produced it. Freeze the instrument, then take the number.
-  Change the harness later and the old baseline is VOID, not merely stale — a
-  delta measured across two instruments is not a delta. And never batch two
-  changes: +4 from two edits at once teaches almost nothing, since one could
-  have contributed +5 and the other -1.
+  instrument that produced it. Freeze, then measure. Never batch two changes: +4
+  from two edits teaches almost nothing, since one could have contributed +5 and
+  the other -1. Void applies to INSTRUMENT changes, not READOUT changes.
+- Ordering measurement work: sequence changes by whether their effect is
+  OBSERVABLE, not only by importance. If two fixes touch the same cases and only
+  one's dimension gates the verdict, running the other first makes a correct fix
+  look like a failure. Read the failure table before committing to an order.
 - Failure-mode granularity: an instrument must distinguish KINDS of failure, not
-  just count them. None vs False in this repo (never decided vs decided no) is
-  the worked example — collapsing them sends you to tune a prompt when the bug
-  is in the loop. Same principle behind splitting FN from FP on escalation, and
-  behind erroring on an unknown --case ID instead of reporting 0/0.
+  just count them. None vs False (never decided vs decided no); FN vs FP on
+  escalation; WARNING (safety) vs NOTE (cost); erroring on an unknown --case ID
+  instead of reporting 0/0.
+- Uncalibrated instruments MANUFACTURE findings. The M3 judge at temperature 1.0
+  produced a two-case claim; pinned to 0, one held and one evaporated — and the
+  fabricated half looked exactly like the real one. Any finding taken with an
+  uncalibrated instrument is provisional until re-taken with a calibrated one.
+- Diagnostic cost discipline: match the measurement to the question. A targeted
+  --case run answers a specific hypothesis for ~4 calls; a full sweep costs 51.
+  Full sweeps are for deltas against a baseline, not for satisfying curiosity.
 
 ## Python covered (reference only, don't re-teach)
 imports/venv/pip -m; lists vs dicts (index vs key); def/return/if-in pattern;
 __init__.py = package marker; module vs script vs config file; reading tracebacks
 (syntax vs name vs import vs API 400); cascading errors — only the FIRST one is
 real; editor→save→REPL-verify rhythm; three terminal "rooms" (PowerShell / >>> /
-Claude Code) and reading the prompt to know which one you're in;
-conditional kwargs (build a dict, add the key only when set) for optional API
-params that must be OMITTED rather than sent as None; **kwargs spread into a
-call; thin wrappers must FORWARD new params or they become silent holes;
-keyword args over positional at call sites, so a signature change can't rebind
-silently; VS Code terminal recovery (Ctrl+`) and that a new terminal starts
-without the venv active.
+Claude Code) and reading the prompt to know which one you're in; conditional
+kwargs (build a dict, add the key only when set) for optional API params that must
+be OMITTED rather than sent as None; **kwargs spread into a call; thin wrappers
+must FORWARD new params or they become silent holes; keyword args over positional
+at call sites; VS Code terminal recovery (Ctrl+`) and that a new terminal starts
+without the venv active; reuse the canonical comparison helper rather than
+reimplementing it in display code.
+
+## Git covered (reference only, don't re-teach)
+git status before staging; stage files BY NAME, never `git add .` (a blanket add
+is how a stray .env reaches a public repo); two -m flags for subject + body on
+PowerShell; `git commit --amend -m` to reword an unpushed commit; a commit SHA
+identifies a whole TREE STATE, not just its own diff, so the baseline SHA is HEAD
+at sweep time even when the code landed in an earlier commit; two adjacent commits
+with identical subjects are a real defect when git log is your build record.
 
 ## Missed exam questions — re-run these during final review
 1. Drift direction (M1d Q2): Pydantic Literal wider than the JSON enum produces
    SILENT misclassification, not a ValidationError. The model is constrained by
    the JSON enum and simply cannot emit the new value.
 2. Temperature/reproducibility (M3 Q2): the answer is "reproducibility is a
-   property of the instrument," NOT "lower production temperature too" — that
-   changes the product to suit the test.
-   STATUS: answered correctly at M4 step 1 Q2 in disguised form. Keep on the
-   list anyway — the exam likes re-costuming this one.
+   property of the instrument," NOT "lower production temperature too."
+   STATUS: answered correctly at M4 step 1 Q2 in disguised form. Keep on the list
+   anyway — the exam likes re-costuming this one.
 3. Residual variance at temperature=0 (M4 step 1 Q1): the objection to trusting
    single runs is that OUTPUTS can still vary. Latency variance is a DIFFERENT
    answer, belonging to "CI timeouts need margin." Keep the two separate; a
    scenario question can bait a swap.
+4. Baseline replacement (M4 step 3 Q1): when the HARNESS is fixed and the score
+   moves on unchanged agent code, the old baseline is VOID — discard and
+   re-baseline. It is not an improvement of +N, because nothing about the system
+   under test changed. Freezing the instrument does not mean preserving a number
+   taken with a broken one.
 
 ## Open threads / future case ideas
 - Under-gathering evidence (spotted in the M1c demo): on cust_002's
   duplicate-charge ticket the agent called get_customer_history but skipped
   check_known_outages, even though billing_portal has an active outage. Candidate
   ambiguous case — does partial investigation still reach the right triage?
-  Note adv_003 partly covers outage consultation; this would test the omission
-  directly rather than the classification.
-- easy_006 now serves a specific purpose: it is the only case verifying the agent
-  reads the revenue trigger NARROWLY (cancellation is revenue-contracting, so the
-  trigger must not fire). Its label_rationale says so — do not "fix" this case.
-- README design-decisions section (M4 step 7) should carry, in Ronan's own words:
+  adv_003 partly covers outage consultation; this would test the omission directly.
+- easy_006 verifies the agent reads the revenue trigger NARROWLY (cancellation is
+  revenue-contracting, so the trigger must not fire). Do not "fix" this case.
+- Harness has NO per-case error handling: a sweep that dies mid-run loses
+  everything, which has already happened once. Scheduled for step 7. Claude Code
+  reported this as previously declined twice; no record of that decision exists
+  here, so treat it as OPEN and decided in step 7, not inherited.
+- Claude Code reliability note: its CODE has been correct every time; its PROSE
+  SUMMARIES have twice misdescribed what the code does (judge selection) or
+  asserted prior decisions with no record (error handling declined twice). Verify
+  claims about state against disk. Also watch for stray non-ASCII in its output.
+- README design-decisions section (step 7), in Ronan's own words:
   agent-vs-workflow, the duplication tripwire, strict needs_human with split
-  false-negative/false-positive reporting, acceptable-sets-fixed-at-authoring,
-  judge-as-advisory, the temperature/variance finding, temperature-as-caller-
-  parameter (instrument vs product), and per-case-not-per-field voting. This
-  section is what contract buyers actually read.
-- README non-goals should carry: blunt keyword matching on trigger citation, and
-  the judge being uncalibrated rather than a quality score.
+  FN/FP reporting, acceptable-sets-fixed-at-authoring, judge-as-advisory, the
+  temperature/variance finding, temperature-as-caller-parameter (instrument vs
+  product), per-case-not-per-field voting, and the label-integrity finding
+  (evals found bugs in the LABELS, not just the prompt — that is a strong and
+  unusual thing to be able to say). This section is what contract buyers read.
+- README headline claim, well supported: 0 missed escalations across 51 runs at
+  temperature 0, with false negatives reported separately from false positives.
+- README non-goals: blunt keyword matching on trigger citation; the judge being
+  uncalibrated rather than a quality score.
