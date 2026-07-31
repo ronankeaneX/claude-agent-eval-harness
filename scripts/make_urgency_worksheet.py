@@ -143,7 +143,11 @@ def check(entry: dict) -> list:
     elif clock not in CLOCKS:
         problems.append(f"CLOCK '{clock}' is not one of the allowed values")
 
-    if not distance:
+    if clock == "unresolved":
+        # No clock was identified, so there is no distance to it and no band is
+        # assigned. Any DISTANCE written is IGNORED rather than used.
+        pass
+    elif not distance:
         problems.append("DISTANCE is empty")
     elif distance not in DISTANCES:
         problems.append(f"DISTANCE '{distance}' is not one of the allowed values")
@@ -173,22 +177,38 @@ def derive() -> None:
     if not entries:
         sys.exit("no case blocks found; is this the right file?")
 
-    clean, flagged = [], []
+    banded, unresolved, flagged = [], [], []
     for num in sorted(entries):
-        problems = check(entries[num])
+        entry = entries[num]
+        problems = check(entry)
         if problems:
             flagged.append((num, problems))
+        elif entry.get("CLOCK", "").lower() == "unresolved":
+            # Policy: no clock identified means NO band. Deriving one from
+            # DISTANCE would report a value for a measurement declared
+            # untakeable, the same defect as reporting 0/0 for an unknown
+            # --case ID.
+            unresolved.append((num, entry))
         else:
-            band = BAND_FROM_DISTANCE[entries[num]["DISTANCE"].lower()]
-            clean.append((num, band, entries[num]))
+            band = BAND_FROM_DISTANCE[entry["DISTANCE"].lower()]
+            banded.append((num, band, entry))
 
-    print(f"{len(clean)} clean, {len(flagged)} flagged, {len(entries)} total")
+    print(
+        f"{len(banded)} banded, {len(unresolved)} unresolved (no band), "
+        f"{len(flagged)} flagged, {len(entries)} total"
+    )
     print()
 
-    if clean:
+    if banded:
         print("DERIVED BANDS")
-        for num, band, entry in clean:
+        for num, band, entry in banded:
             print(f"  {num}  {band:<6}  {entry['CLOCK']:<20}  {entry['DISTANCE']}")
+        print()
+
+    if unresolved:
+        print("UNRESOLVED (no band assigned, per docs/urgency-policy.md)")
+        for num, entry in unresolved:
+            print(f"  {num}  {entry['WHY'][:60]}")
         print()
 
     if flagged:

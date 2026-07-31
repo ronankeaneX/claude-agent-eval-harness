@@ -43,6 +43,11 @@ harm already present.
 
 Where more than one clock applies, the shortest one sets the band.
 
+Where the ticket does not carry enough information to identify a clock, the
+outcome is `unresolved` and NO band is assigned. A forced band is worse than a
+recorded gap, because a gap stays visible while a forced value enters the answer
+key as though it had been decided.
+
 ### What starts a clock
 
 1. **Ongoing accrual.** Harm is still being added while the ticket sits: a

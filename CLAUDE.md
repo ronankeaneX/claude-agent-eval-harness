@@ -137,6 +137,8 @@ code or display that compares expected vs actual must reuse the scorer's
   measuring deltas against the baseline, not for answering diagnostic questions.
 
 ## Curriculum state
+MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the entry
+         [ ] open
 - [x] M0: Scaffold — venv, .env hygiene, smoke test w/ forced tool use
 - [x] M0b: GitHub remote connected, repo public and verified (no .env)
 - [x] M1a: schemas.py — Pydantic models, Literal validation confirmed via REPL
@@ -309,13 +311,37 @@ ZERO cases and a correct fix would look like a no-op at case level.
                  classify tickets not in the suite or it is transcription.
           RESIDUAL RISK, recorded not cleaned: the rubric is written by someone
           who has seen the contaminated framing.
-   c. [ ] If ANY label changed -> RE-BASELINE. 8/17 is void. Record new SHA.
-          If none changed, 8/17 stands.
-   d. [ ] Targeted diagnostic runs to confirm/kill the coupling hypothesis:
+          STATUS 2026-07-31: sub-steps i, ii, iii DONE. Rubric written at
+          principle level and committed as docs/urgency-policy.md before the
+          dataset was touched; applied mechanically to ALL 17 cases, not the six
+          agent-selected ones; validated 6/6 on out-of-suite tickets (policy §5).
+          Worksheet v2 filled for all 17, validator clean. Artifacts committed to
+          docs/audits/ (v1 and v2 worksheets, key.json).
+          NOT DONE: the WHY review and THE DIFF against key.json. 4b's deliverable
+          was always the diff, so this is CLOSED BY DECISION, not completed.
+          FORM FINDING (v1 -> v2): v1 asked for BAND first and let severity,
+          revenue and tone in; 6 of 17 bands contradicted their own DISTANCE and
+          9 of 17 used one clock as a catch-all. v2 removed BAND and derived it.
+          Same person, same policy, same tickets: every severity and revenue
+          argument disappeared. The elicitation form was the instrument.
+          RUBRIC USABILITY FINDING: the policy failed to hold the time frame in
+          place for its own author, working from the document, one screen away.
+          That predicts the agent's single pass at 4e. Both findings -> README.
+   c. [x] CLOSED 2026-07-31. No label was compared or changed, so the 8/17
+          baseline STANDS and remains valid. Recorded precisely: the baseline
+          holds because nothing was changed, NOT because the audit found the
+          labels correct. The diff was never run; that measurement is absent, not
+          clean. Same rule as an unknown --case ID exiting 2 rather than 0/0.
+   STEP 4 CLOSED 2026-07-31 BY DECISION, not completion. Demo repo; enough time
+   spent on urgency. Sub-steps d, e, f NOT DONE and not scheduled. Consequence:
+   no label and no prompt changed, so 8/17 stands and urgency behavior is
+   UNMEASURED against the new policy. The pre-registered +4 prediction was never
+   tested — say so, do not quietly drop it. Next work is step 7.
+   d. [~] NOT DONE. Targeted diagnostic runs to confirm/kill the coupling hypothesis:
           `--case easy_003 --n 3`, same for easy_005, amb_002, oos_002, plus
           adv_002 for the tone hypothesis. ~15 agent calls, not a full sweep.
-   e. [ ] Write the rubric, targeted at the mechanism actually confirmed.
-   f. [ ] Full sweep, measure delta.
+   e. [~] NOT DONE. Write the rubric, targeted at the mechanism actually confirmed.
+   f. [~] NOT DONE. Full sweep, measure delta.
    PRE-REGISTERED PREDICTION (recorded before the label finding, DO NOT REVISE):
    +4 cases -> 12/17, from easy_003, amb_002, adv_002, oos_002 — the four failing
    ONLY on urgency. ANNOTATION: this assumed urgency was purely a prompt gap. The
@@ -478,6 +504,17 @@ with identical subjects are a real defect when git log is your build record.
    re-baseline. It is not an improvement of +N, because nothing about the system
    under test changed. Freezing the instrument does not mean preserving a number
    taken with a broken one.
+5. Ordering when BOTH prompt and labels change (M4 step 4b Q1): labels first,
+   re-baseline, THEN prompt. Answered "prompt first, the delta is captured before
+   the labels move." The delta IS captured, but against a key being rejected, and
+   the comparison point needed (old prompt / new labels) is gone once the labels
+   move. Unrecoverable, not merely weak.
+6. Overfitting vs corrective (M4 step 4b Q2): these are INDEPENDENT axes.
+   Definitional-vs-corrective = why the line exists. Policy-vs-overfitting =
+   whether it classifies tickets outside the suite. "Tone does not set the band"
+   is corrective in origin and fully generalizable. A line encoding a surface
+   feature of one ticket pattern is the overfit. Also: a line that is simply WRONG
+   policy is not the same as an overfitted line; the exam separates those.
 
 ## Open threads / future case ideas
 - Under-gathering evidence (spotted in the M1c demo): on cust_002's
@@ -487,10 +524,26 @@ with identical subjects are a real defect when git log is your build record.
   adv_003 partly covers outage consultation; this would test the omission directly.
 - easy_006 verifies the agent reads the revenue trigger NARROWLY (cancellation is
   revenue-contracting, so the trigger must not fire). Do not "fix" this case.
+- Doc/tool divergence is a THIRD surface of the duplication problem, alongside
+  JSON enum vs Pydantic Literal and policy doc vs SYSTEM_PROMPT. Tooling
+  introduced an `unresolved` clock kind the policy never defined, and it landed
+  on 4 of 17 entries before anyone noticed. Section 7 of the policy anticipated
+  the category and missed this direction. FIXED 2026-07-31: the policy defines
+  unresolved, the script assigns no band for it.
+- Worksheet validator gap: WHAT is checked for PRESENCE but not for containing a
+  date, so "bank dispute window" passes without "60 days". 5 of 17 name a problem
+  instead of a closing date. Not worth a pass on its own; fix only if the audit
+  is ever redone.
 - Harness has NO per-case error handling: a sweep that dies mid-run loses
   everything, which has already happened once. Scheduled for step 7. Claude Code
   reported this as previously declined twice; no record of that decision exists
   here, so treat it as OPEN and decided in step 7, not inherited.
+- Verify FIND/REPLACE results against disk, whoever authored the edit. A
+  multi-item edit proposed in chat was applied differently than its author
+  modeled, silently dropping missed-question #4 and orphaning the pointer to it
+  at line 165. Claude Code caught it from the file; the chat-side author denied
+  it from memory and nearly blocked the correct fix. The unreliable surface is
+  any claim about file state not read from the file, including a chat session's.
 - Claude Code reliability note: its CODE has been correct every time; its PROSE
   SUMMARIES have twice misdescribed what the code does (judge selection) or
   asserted prior decisions with no record (error handling declined twice). Verify
