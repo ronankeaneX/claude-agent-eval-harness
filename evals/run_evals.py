@@ -30,7 +30,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.triage.agent import run_triage_with_metrics
-from evals.scoring import score_case
+# _matches is imported so the DISPLAY of a mismatch agrees with the scorer's
+# own list-vs-scalar semantics. Reimplementing it here could show a field as
+# mismatched that the scorer counted as a pass.
+from evals.scoring import score_case, _matches
 from evals.judges.reasoning_judge import judge_reasoning
 
 DATASET = Path("evals/dataset/tickets.json")
@@ -38,6 +41,10 @@ DATASET = Path("evals/dataset/tickets.json")
 # Fields whose run-to-run stability we track. Pass/fail is the VERDICT; these
 # are the instrument's reliability, reported separately and never gating.
 FLIP_FIELDS = ["category", "urgency", "needs_human", "trigger_cited"]
+
+# The three fields the agent actually chooses a VALUE for. trigger_cited is
+# excluded: it is a derived check, not something the agent emits.
+VALUE_FIELDS = ["category", "urgency", "needs_human"]
 
 # Compact labels for the flips column.
 SHORT = {
@@ -157,6 +164,16 @@ def _aggregate(case: dict, runs: list, values: dict) -> dict:
     }
     # A field FLIPPED if it did not settle on one value across all n runs.
     row["flipped"] = [f for f in FLIP_FIELDS if len(set(values[f])) > 1]
+
+    # DIAGNOSTIC ONLY: what the label asked for vs what the agent actually said.
+    # A fail count tells you a field was wrong; these tell you which way it was
+    # wrong, which is what a prompt fix has to be aimed at.
+    row["expected"] = {
+        "category": case["expected_category"],
+        "urgency": case["expected_urgency"],
+        "needs_human": case["expected_needs_human"],
+    }
+    row["actual"] = {f: list(values[f]) for f in VALUE_FIELDS}
     return row
 
 
@@ -206,6 +223,7 @@ def _report(rows, total_in, total_out, elapsed, judged, n):
         print(f"  {t:<14} {sub_passed}/{len(sub)}")
 
     _diagnostics(rows, total, n, judged)
+    _confusion(rows)
 
     if judged:
         scores = [r["judge_score"] for r in rows if "judge_score" in r]
@@ -222,6 +240,66 @@ def _report(rows, total_in, total_out, elapsed, judged, n):
     # dict, with no usage data to add up.
     print(f"Agent tokens: {total_in} in / {total_out} out over {total * n} runs")
     print(f"Elapsed: {elapsed:.1f}s")
+
+
+def _fmt(v) -> str:
+    """None is the agent never deciding — say so rather than printing 'None'."""
+    return "NO-DECISION" if v is None else str(v)
+
+
+def _tally(vals: list) -> str:
+    """Values in first-seen order with counts: 'high x2, medium x1'."""
+    ordered = []
+    for v in vals:
+        for i, (seen, count) in enumerate(ordered):
+            if seen == v:
+                ordered[i] = (seen, count + 1)
+                break
+        else:
+            ordered.append((v, 1))
+    return ", ".join(f"{_fmt(v)} x{c}" for v, c in ordered)
+
+
+def _wrong(field: str, expected, actuals: list) -> bool:
+    """Did the agent miss on at least one run? Mirrors the scorer exactly.
+
+    needs_human uses plain equality and category/urgency use _matches, because
+    that is what score_case does. A None actual never matches, so a
+    no-decision run always counts as a miss.
+    """
+    if field == "needs_human":
+        return any(a != expected for a in actuals)
+    return any(not _matches(expected, a) for a in actuals)
+
+
+def _confusion(rows):
+    """Expected vs actual per field. DIAGNOSTIC ONLY — gates nothing.
+
+    Only fields that missed on >=1 run are printed: a field that matched every
+    run carries no diagnostic information and would bury the ones that did not.
+    """
+    print()
+    print("--- CONFUSION DIRECTION (diagnostic only: never gates) ---")
+    print("  Shown where the agent's value missed on at least one run.")
+    print("  'gate' is the case's majority verdict, repeated for context only.")
+    print()
+
+    any_shown = False
+    for r in rows:
+        gate = "ok  " if r["deterministic_pass"] else "FAIL"
+        for field in VALUE_FIELDS:
+            expected = r["expected"][field]
+            actuals = r["actual"][field]
+            if not _wrong(field, expected, actuals):
+                continue
+            any_shown = True
+            print(
+                f"  {r['case_id']:<10} {gate}  {field:<12} "
+                f"expected={_fmt(expected):<22} actual={_tally(actuals)}"
+            )
+
+    if not any_shown:
+        print("  (nothing to show: every field matched on every run)")
 
 
 def _diagnostics(rows, total, n, judged=False):
