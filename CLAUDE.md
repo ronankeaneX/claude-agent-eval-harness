@@ -2,34 +2,11 @@
 
 ## What this project is
 Support-ticket triage AGENT (not workflow) + evaluation harness.
-Portfolio repo for Ronan Keane (applied AI / contract positioning) AND
-hands-on prep for the CCA-F exam. Exam ~Aug 4, 2026 but RESCHEDULABLE — Ronan has
-explicitly chosen build quality over exam date. Do not compress work to hit Aug 4.
-
-## Working agreement (instructor mode, revised Jul 27)
-- Exam prep and repo build have EQUAL priority. Both purposes served at every milestone.
-- Claude provides complete annotated code, or Claude Code generates it.
-  Ronan does NOT hand-type code — that rule is retired.
-- Every milestone: concept brief FIRST (mapped to exam domain) → code as the
-  working example → scenario quiz in CCA-F format (2-3 questions).
-- Quizzes are delivered as MULTIPLE CHOICE with distractors, matching exam format.
-  Free-recall phrasing tests a different skill than the exam does.
-- File edits are given as explicit FIND / REPLACE blocks with the verbatim
-  current text and the verbatim replacement text. Never "replace the X bullet"
-  or "update the Y section" — Ronan should never have to locate the target by
-  interpretation.
-- SESSION HYGIENE: do NOT ask Ronan to paste this whole file for routine edits.
-  FIND/REPLACE needs only the section being changed. Full-file rewrites are for
-  handoffs, not iteration. Five full pastes is what ended the previous session.
-- Ronan is NOT experienced building agents. Design decisions get framed with the
-  tradeoff explained, and where a decision is really a domain question (support
-  policy, ops judgment) say so — that is where his 20+ years of B2B operations
-  experience is the actual expertise, not the Python.
-- Ronan's deliverables per milestone: explain back the DESIGN (not syntax),
-  answer scenario questions, make one design decision with reasoning.
-- Python syntax explained only when Ronan asks. No unprompted syntax lessons.
-- Never touch .env or .gitignore. Never commit secrets.
-- Flag open items neutrally. No pressure language about outstanding deliverables.
+Portfolio repo for Ronan Keane (applied AI / contract positioning). The repo
+exists to demonstrate agent design and measurement discipline: a real agentic
+loop, a golden dataset, two-track scoring, and an instrument trustworthy enough
+that a movement in the score means something.
+Build quality over speed. Do not compress work to hit a date.
 
 ## Dataset shape (confirmed on disk)
 Top-level list of case objects. Field names, exactly:
@@ -143,15 +120,15 @@ MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the
 - [x] M0b: GitHub remote connected, repo public and verified (no .env)
 - [x] M1a: schemas.py — Pydantic models, Literal validation confirmed via REPL
 - [x] M1b: tools.py — FAKE_CUSTOMERS/FAKE_OUTAGES stubs, structured not-found errors
-- [x] M1c: agent.py — the loop, verified end-to-end. Quiz 3/3.
-- [x] M1d: tests/test_schema_sync.py — drift tripwire, RED then GREEN. Quiz 1/2.
+- [x] M1c: agent.py — the loop, verified end-to-end.
+- [x] M1d: tests/test_schema_sync.py — drift tripwire, RED then GREEN.
 - [x] M2: evals/dataset/tickets.json — 17 cases (6 easy, 4 ambiguous,
-      5 adversarial, 2 out-of-scope). Escalation split ~50/50. Quiz 2/2.
+      5 adversarial, 2 out-of-scope). Escalation split ~50/50.
 - [x] M3: evals/scoring.py + evals/judges/reasoning_judge.py + evals/run_evals.py.
-      Both tracks running. Quiz 1/2.
+      Both tracks running.
 - [ ] M4: reliability first, THEN prompt work, THEN gate/CI/README.
       - [x] step 1: temperature parameterized as a caller argument (Option B).
-            run_evals.py:47 and reasoning_judge.py:79 pin 0. Quiz 1.5/3.
+            run_evals.py:47 and reasoning_judge.py:79 pin 0.
             Near-miss worth remembering: the parameter existed for one turn while
             neither caller passed it — a sweep then would have LOOKED measured and
             sampled at 1.0.
@@ -159,12 +136,11 @@ MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the
             flag demonstrates the variance the harness controls for.
       - [x] step 2: --n majority voting (default 3), PER-CASE. Even ties fail.
             None distinct from False. Diagnostics: per-field flip rates +
-            needs_human FN/FP split + WARNING on concealed misses. Quiz 3/3.
+            needs_human FN/FP split + WARNING on concealed misses.
             LESSON: Claude Code's PROSE described judge selection as "run 1's
             output," which read as run-1-only; the CODE was correct (first
             non-None). Verify against disk, not against the summary.
       - [x] step 3: baseline 8/17 taken 2026-07-30. See frozen reference below.
-            Quiz 2/3 (missed baseline-replacement — see missed questions #4).
             Habit worth keeping: a live single-case smoke test ran BEFORE the full
             sweep because the voting code had only been exercised against offline
             fakes. Cheap validation of a new code path before spending a sweep.
@@ -189,8 +165,6 @@ MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the
             NEXT: blind label audit (see plan step 4).
 - [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4. Scope it SMALLER
       than Repo 1 deliberately; it is a separate multi-day build.
-- [ ] Final 2 days before exam: pure exam review, all five domains, missed
-      questions re-run.
 
 ## Progress estimate (as of session end 2026-07-30)
 Repo 1 roughly 55-60% done. Remaining: step 4 (urgency, 45-90 min now that the
@@ -380,141 +354,6 @@ DISPLAYED: warning lines, formatting, added labels, confusion-direction output.
 Additive readout changes do not void a baseline, because no recorded value moves.
 Test: would re-running the old sweep under the new code produce a different
 NUMBER? If yes, void. If it only prints differently, keep.
-
-## Exam concepts covered (CCA-F mapping)
-- D1 Agentic Architecture: workflow vs agent = WHO decides the next step (not
-  linear vs branching — workflows can branch, loop, retry); forced vs auto
-  tool_choice; agent = goal + tools + loop + termination.
-- D1 stop_reason as the branch point: "tool_use" = keep looping, "end_turn" =
-  Claude stopped without deciding, "max_tokens"/other = reply is unreliable.
-  NATURAL stop is the finish-line tool (record_triage called → return); SAFETY
-  stop is the MAX_TURNS cap. Reaching the safety stop is a failure signal.
-- D4 Tool Design: JSON Schema basics; structured errors from tools (return error
-  dicts, don't crash — a raised exception kills the loop, a returned error informs
-  it); tools-as-forms trick for structured output; the tool_result block must
-  quote back Claude's tool_use id, and BOTH sides get appended each round.
-- Context Management: input tokens COMPOUND across loop turns; output tokens
-  don't. Verbose tool results are a tax paid on every subsequent turn. MAX_TURNS
-  protects the bill as well as the logic.
-- Evals: deterministic vs judge tracks — stable structured fields get exact-match
-  checks, free-text fields get an LLM judge; push everything possible into the
-  deterministic column. Golden dataset taxonomy and why an all-easy suite scores
-  96% and predicts nothing. Fixture consistency rule. Drift asymmetry: Pydantic
-  WIDER than the JSON enum = silent misclassification; NARROWER = loud
-  ValidationError. Judge failure modes: verbosity bias, self-preference, position
-  bias. Tests (static, free, deterministic) vs evals (model judgment, costs
-  calls, nondeterministic).
-- Reproducibility is a property of the MEASURING INSTRUMENT, not the system under
-  test. Measure at temperature 0 so the harness can distinguish a real regression
-  from run-to-run variance; production temperature is a separate product decision.
-  Latency is nondeterministic too (8.9–11.9s on identical input) — CI timeouts
-  need margin.
-- Residual variance: temperature=0 shrinks output variance but does NOT guarantee
-  identical outputs, so temp=0 and n-run voting are a PAIR, not alternatives.
-  MEASURED here: ~18% verdict flips at temp 1.0 collapsed to 4 cases flipping a
-  single field each at temp 0.
-- Consistent-wrong vs inconsistent-wrong is a DIAGNOSTIC SIGNATURE. Wrong on
-  every run at temp 0 points at a missing or undefined instruction (prompt bug).
-  Varying run to run points at genuine ambiguity in the case or the label. You
-  cannot tell these apart without a repeatable instrument — which is why
-  reliability work comes BEFORE prompt work.
-- A fail COUNT is not a diagnosis; you need the CONFUSION DIRECTION. Knowing
-  urgency failed 8/17 does not tell you which way it was wrong, and the fix
-  differs entirely by direction. An instrument that reports only pass/fail forces
-  you to infer, and inference gets recorded as fact.
-- THE ANSWER KEY IS PART OF THE INSTRUMENT. Labels are not ground truth handed
-  down from outside; they were authored, and they can be wrong or
-  under-considered. Two consequences: (1) changing a label voids a baseline
-  exactly as changing the scorer would; (2) label adjudication must be BLIND to
-  model behavior, or you are fitting the key to the output. A rubric written by
-  reading the answer key is teaching to the test — it measures transcription, not
-  policy. The distinction that matters: articulating the labels' INTENDED POLICY
-  as a generalizable principle is legitimate; enumerating case-specific rules
-  that happen to satisfy 17 examples is overfitting. Test: would the rubric
-  classify a ticket that is not in the dataset?
-- Orthogonality as a design test for multi-field outputs: if two fields cannot
-  populate all four quadrants of their cross-product, they are measuring one
-  thing and an eval scoring both looks broader than it is. needs_human (WHO) vs
-  urgency (WHEN) passes; needs_human vs consequence-severity does not.
-- Voting unit (per-case vs per-field): per-field majorities can assemble a
-  passing composite that no individual run produced. Gate on the honest unit,
-  instrument at the finer grain. PAYOFF observed: the trigger fix moves a FIELD
-  (adv_005 esc 0/3 -> 3/3) while the case verdict stays FAIL — without per-field
-  diagnostics a correct fix reads as a no-op.
-- Determinism vs correctness: determinism makes defects REPRODUCIBLE, it does not
-  remove them.
-- Vote-shopping as an anti-pattern: rerunning until pass, reporting the best run,
-  raising n until a case passes — all the runtime form of moving the standard to
-  fit the result.
-- Baseline discipline: a baseline inherits its authority entirely from the
-  instrument that produced it. Freeze, then measure. Never batch two changes: +4
-  from two edits teaches almost nothing, since one could have contributed +5 and
-  the other -1. Void applies to INSTRUMENT changes, not READOUT changes.
-- Ordering measurement work: sequence changes by whether their effect is
-  OBSERVABLE, not only by importance. If two fixes touch the same cases and only
-  one's dimension gates the verdict, running the other first makes a correct fix
-  look like a failure. Read the failure table before committing to an order.
-- Failure-mode granularity: an instrument must distinguish KINDS of failure, not
-  just count them. None vs False (never decided vs decided no); FN vs FP on
-  escalation; WARNING (safety) vs NOTE (cost); erroring on an unknown --case ID
-  instead of reporting 0/0.
-- Uncalibrated instruments MANUFACTURE findings. The M3 judge at temperature 1.0
-  produced a two-case claim; pinned to 0, one held and one evaporated — and the
-  fabricated half looked exactly like the real one. Any finding taken with an
-  uncalibrated instrument is provisional until re-taken with a calibrated one.
-- Diagnostic cost discipline: match the measurement to the question. A targeted
-  --case run answers a specific hypothesis for ~4 calls; a full sweep costs 51.
-  Full sweeps are for deltas against a baseline, not for satisfying curiosity.
-
-## Python covered (reference only, don't re-teach)
-imports/venv/pip -m; lists vs dicts (index vs key); def/return/if-in pattern;
-__init__.py = package marker; module vs script vs config file; reading tracebacks
-(syntax vs name vs import vs API 400); cascading errors — only the FIRST one is
-real; editor→save→REPL-verify rhythm; three terminal "rooms" (PowerShell / >>> /
-Claude Code) and reading the prompt to know which one you're in; conditional
-kwargs (build a dict, add the key only when set) for optional API params that must
-be OMITTED rather than sent as None; **kwargs spread into a call; thin wrappers
-must FORWARD new params or they become silent holes; keyword args over positional
-at call sites; VS Code terminal recovery (Ctrl+`) and that a new terminal starts
-without the venv active; reuse the canonical comparison helper rather than
-reimplementing it in display code.
-
-## Git covered (reference only, don't re-teach)
-git status before staging; stage files BY NAME, never `git add .` (a blanket add
-is how a stray .env reaches a public repo); two -m flags for subject + body on
-PowerShell; `git commit --amend -m` to reword an unpushed commit; a commit SHA
-identifies a whole TREE STATE, not just its own diff, so the baseline SHA is HEAD
-at sweep time even when the code landed in an earlier commit; two adjacent commits
-with identical subjects are a real defect when git log is your build record.
-
-## Missed exam questions — re-run these during final review
-1. Drift direction (M1d Q2): Pydantic Literal wider than the JSON enum produces
-   SILENT misclassification, not a ValidationError. The model is constrained by
-   the JSON enum and simply cannot emit the new value.
-2. Temperature/reproducibility (M3 Q2): the answer is "reproducibility is a
-   property of the instrument," NOT "lower production temperature too."
-   STATUS: answered correctly at M4 step 1 Q2 in disguised form. Keep on the list
-   anyway — the exam likes re-costuming this one.
-3. Residual variance at temperature=0 (M4 step 1 Q1): the objection to trusting
-   single runs is that OUTPUTS can still vary. Latency variance is a DIFFERENT
-   answer, belonging to "CI timeouts need margin." Keep the two separate; a
-   scenario question can bait a swap.
-4. Baseline replacement (M4 step 3 Q1): when the HARNESS is fixed and the score
-   moves on unchanged agent code, the old baseline is VOID — discard and
-   re-baseline. It is not an improvement of +N, because nothing about the system
-   under test changed. Freezing the instrument does not mean preserving a number
-   taken with a broken one.
-5. Ordering when BOTH prompt and labels change (M4 step 4b Q1): labels first,
-   re-baseline, THEN prompt. Answered "prompt first, the delta is captured before
-   the labels move." The delta IS captured, but against a key being rejected, and
-   the comparison point needed (old prompt / new labels) is gone once the labels
-   move. Unrecoverable, not merely weak.
-6. Overfitting vs corrective (M4 step 4b Q2): these are INDEPENDENT axes.
-   Definitional-vs-corrective = why the line exists. Policy-vs-overfitting =
-   whether it classifies tickets outside the suite. "Tone does not set the band"
-   is corrective in origin and fully generalizable. A line encoding a surface
-   feature of one ticket pattern is the overfit. Also: a line that is simply WRONG
-   policy is not the same as an overfitted line; the exam separates those.
 
 ## Open threads / future case ideas
 - Under-gathering evidence (spotted in the M1c demo): on cust_002's
