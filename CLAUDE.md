@@ -155,7 +155,8 @@ MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the
             list-valued case across three value combinations); None prints as
             NO-DECISION; cases that pass the gate still appear if any run missed,
             with a gate column for context. Verified offline; pytest 2 passed.
-            check_voting.py fakes updated to carry expected_* keys (test-fixture
+            check_voting.py (a throwaway validation script, never tracked, no longer on
+            disk) had its fakes updated to carry expected_* keys (test-fixture
             gap, not a product one).
             RESOLVED 2026-07-30: the stray Cyrillic fragment reported in Claude
             Code's prose never reached disk. Audited run_evals.py (only non-ASCII
@@ -179,7 +180,12 @@ as open questions with reasoning reads BETTER to a technical buyer than resolvin
 them silently.
 
 ## M4 baseline — frozen reference
-STATUS: TAKEN 2026-07-30. Raw output at evals/baselines/2026-07-30-n3-temp0.txt.
+STATUS: TAKEN 2026-07-30. RAW OUTPUT NOT RETAINED — evals/baselines/ was never
+created and the sweep's stdout was lost. The figures recorded in this section are
+transcribed from that output and are the AUTHORITATIVE record of the baseline.
+Re-running would produce a NEW baseline, not evidence for this one, so the gap is
+documented rather than papered over. Any future sweep must write raw output to a
+file before anything else is done with it.
 VALIDITY: still valid. The confusion-direction readout added afterward is a
 readout change; re-running would reproduce 8/17. Will be VOID if any label changes.
 - Commit SHA: 9cecd2d (HEAD at sweep time; code landed in f633cd4, docs on top)
