@@ -167,17 +167,17 @@ MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the
 - [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4. Scope it SMALLER
       than Repo 1 deliberately; it is a separate multi-day build.
 
-## Progress estimate (as of session end 2026-07-30)
-Repo 1 roughly 55-60% done. Remaining: step 4 (urgency, 45-90 min now that the
-label question is open), step 5 (trigger wording, 30-45 min), step 6 (label
-adjudications, 45-75 min), step 7 (gate + CI + cost table + README + license +
-per-case error handling, 2-3 hrs). Step 7 is most of what is left and the
-highest-risk: GitHub Actions needs a reduced sweep mode (a 51-run sweep per push
-is untenable) and that design decision is unmade. The README is the highest-value
-artifact for the contract-buyer purpose and must be in Ronan's voice — budget an
-hour, do not compress. Most cuttable work is step 6; documenting the two labels
-as open questions with reasoning reads BETTER to a technical buyer than resolving
-them silently.
+## Progress estimate (as of session end 2026-08-03)
+Repo 1 roughly 70-75% done (rough estimate, not measured; same basis as the
+55-60% recorded 2026-07-30). Step 4 CLOSED BY DECISION, so urgency remains
+UNMEASURED against the new policy. Step 7's documentation half SHIPPED
+2026-08-03: README, MIT license, and the measured cost/latency table are public.
+Remaining: step 5 (trigger wording, 30-45 min), step 6 (label adjudications,
+45-75 min), and step 7's engineering half — regression gate, GitHub Actions CI,
+per-case error handling, 1.5-2 hrs. The CI reduced-sweep design decision is still
+unmade and is the highest-risk item left. Most cuttable work is step 6;
+documenting the two labels as open questions with reasoning reads BETTER to a
+technical buyer than resolving them silently.
 
 ## M4 baseline — frozen reference
 STATUS: TAKEN 2026-07-30. RAW OUTPUT NOT RETAINED — evals/baselines/ was never
@@ -343,11 +343,18 @@ ZERO cases and a correct fix would look like a no-op at case level.
    NOTE: easy_002 and easy_005 also appear in the step 4b audit list. Do not
    adjudicate the same label twice on different grounds — if 4b resolves them,
    step 6 shrinks accordingly.
-7. Regression gate (pass band or majority-vote threshold, NOT a single-run hard
-   threshold — it would flake), GitHub Actions CI (needs a REDUCED sweep mode;
-   full 51-run sweep per push is untenable — design decision unmade),
-   cost/latency table, README, MIT license, per-case error handling in the harness
-   (a sweep that dies mid-run currently loses everything; already happened once).
+7. PARTLY SHIPPED 2026-08-03. DONE and pushed: README.md (design decisions, the
+   three eval findings, the frozen baseline with the measured cost/latency table,
+   known gaps), MIT LICENSE, requirements.txt re-encoded to UTF-8 (pip freeze
+   under PowerShell wrote UTF-16LE; pip decodes that correctly, so nothing was
+   broken — UTF-8 is the portable default), load_dotenv() in the judge (it built
+   a client without loading the environment itself, working only because every
+   current path imports the agent first), schemas.py whitespace tidy.
+   STILL OPEN: regression gate (pass band or majority-vote threshold, NOT a
+   single-run hard threshold — it would flake), GitHub Actions CI (needs a
+   REDUCED sweep mode; full 51-run sweep per push is untenable — design decision
+   unmade), per-case error handling in the harness (a sweep that dies mid-run
+   currently loses everything; already happened once).
 RULE: each prompt change measured as a deliberate before/after, never batched.
 RULE: write the PREDICTION down BEFORE running. Recorded afterward it is
 rationalization, not measurement.
@@ -404,3 +411,12 @@ NUMBER? If yes, void. If it only prints differently, keep.
   temperature 0, with false negatives reported separately from false positives.
 - README non-goals: blunt keyword matching on trigger citation; the judge being
   uncalibrated rather than a quality score.
+- AUDIT A PUBLISHED ARTIFACT AGAINST ITS SOURCE BEFORE IT GOES PUBLIC. The README
+  draft carried a per-run latency range (8.9-11.9s) presented as sweep data. The
+  real observation was latency variance on repeated identical input, recorded in a
+  section that has since moved out of the repo, so no surviving source supported
+  the number as written. Also caught pre-publish: "four cases flipping a single
+  field each" was wrong because oos_001 flipped two, and the flips table omitted
+  trigger_cited, which broke the arithmetic between the two claims. All three were
+  in the document whose thesis is measured-not-projected. A drafted claim inherits
+  no authority from the care taken elsewhere in the same file.
