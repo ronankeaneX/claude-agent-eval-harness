@@ -10,6 +10,6 @@ class Ticket(BaseModel):
 
 class TriageResult(BaseModel):
     category: Literal["billing", "technical", "account", "other"]
-    urgency: Literal[ "low", "medium", "high"]
+    urgency: Literal["low", "medium", "high"]
     needs_human: bool
     reasoning: str
