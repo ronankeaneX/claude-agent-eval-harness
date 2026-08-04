@@ -36,7 +36,9 @@ from src.triage.agent import run_triage_with_metrics
 from evals.scoring import score_case, _matches
 from evals.judges.reasoning_judge import judge_reasoning
 
-DATASET = Path("evals/dataset/tickets.json")
+# Resolved from __file__, not cwd, for the same reason as the sys.path line
+# above: the harness must not depend on where it was invoked from.
+DATASET = Path(__file__).resolve().parent / "dataset" / "tickets.json"
 
 # Fields whose run-to-run stability we track. Pass/fail is the VERDICT; these
 # are the instrument's reliability, reported separately and never gating.

@@ -453,17 +453,19 @@ NUMBER? If yes, void. If it only prints differently, keep.
   accurate statement is one flip with a dependent second, not two. Recorded
   numbers unchanged; the INTERPRETATION narrows. Extends the pre-publish
   catch already logged in this section.
-- DATASET PATH IS CWD-RELATIVE (found 2026-08-04, fix specified, NOT YET
-  APPLIED). run_evals.py line 39 is Path("evals/dataset/tickets.json") while
+- DATASET PATH WAS CWD-RELATIVE (found 2026-08-04, FIXED AND PUSHED same day).
+  run_evals.py line 39 was Path("evals/dataset/tickets.json") while
   line 30 goes out of its way to resolve the repo root from __file__. Run the
   harness from any other directory and it dies with FileNotFoundError, exit 1,
   before any API call — verified. pytest is unaffected because it derives
   rootdir from the test file's location. GitHub Actions works only by luck:
   actions/checkout leaves cwd at the workspace root. Would break under a
   working-directory key, a matrix that cds, or a composite action.
-  FIX: DATASET = Path(__file__).resolve().parent / "dataset" / "tickets.json"
+  APPLIED: DATASET = Path(__file__).resolve().parent / "dataset" / "tickets.json"
   Resolves to the same file from the repo root, so no recorded number moves and
-  8/17 holds.
+  8/17 HOLDS. Verified after the fix: from an unrelated cwd an unknown --case
+  now reaches the documented exit 2, where it previously exited 1 before
+  parsing arguments at all. pytest 27 passed.
   PROCESS NOTE: this fix was agreed in chat and then not issued to any tool.
   Caught by a pre-flight `git status` showing a clean tree. Same family as
   "recorded DONE but never committed," arriving from a new direction — agreed
