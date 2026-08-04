@@ -1,12 +1,29 @@
 # CLAUDE.md — claude-agent-eval-harness
 
+Read automatically by Claude Code at session start. Contains this repository's
+conventions and its settled engineering decisions. Decisions marked settled are
+not to be relitigated without a stated reason.
+
 ## What this project is
-Support-ticket triage AGENT (not workflow) + evaluation harness.
-Portfolio repo for Ronan Keane (applied AI / contract positioning). The repo
-exists to demonstrate agent design and measurement discipline: a real agentic
-loop, a golden dataset, two-track scoring, and an instrument trustworthy enough
-that a movement in the score means something.
+A support-ticket triage AGENT (not a workflow) plus the evaluation harness that
+measures it. The agent runs a real tool-calling loop: it chooses which tools to
+call and when to stop, rather than following a fixed sequence. The harness scores
+it against a golden dataset on two tracks — deterministic field checks that gate,
+and an advisory LLM judge that does not — with n-run majority voting so that a
+movement in the score reflects the agent and not run-to-run noise.
 Build quality over speed. Do not compress work to hit a date.
+
+## Conventions
+- NEVER touch .env or .gitignore. Both are hand-maintained; an agent editing
+  either can silently expose a secret or silently stop ignoring one.
+- NEVER commit secrets. If a key reaches a tracked file or the chat, say so
+  immediately and help move it to .env.
+- Tests cover ERROR PATHS, not just the happy path. A no-decision result, a
+  None, an unknown case id and an even-numbered tie are all real states this
+  system reaches, and each has a test.
+- A label change is NEVER a one-file change: the label and SYSTEM_PROMPT must
+  agree, and changing a label voids the current baseline (see the instrument
+  rule in the M4 plan).
 
 ## Dataset shape (confirmed on disk)
 Top-level list of case objects. Field names, exactly, in file order:
@@ -116,7 +133,7 @@ code or display that compares expected vs actual must reuse the scorer's
   cases) instead of a 51-run sweep (9.6 min, ~106k tokens). Full sweeps are for
   measuring deltas against the baseline, not for answering diagnostic questions.
 
-## Curriculum state
+## Build progress
 MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the entry
          [ ] open
 - [x] M0: Scaffold — venv, .env hygiene, smoke test w/ forced tool use
@@ -167,11 +184,9 @@ MARKERS: [x] done  [~] not done, not scheduled  [!] closed but flagged, read the
             via git ls-files. Zero hits repo-wide. Fragment deliberately NOT
             quoted here so the repo stays ASCII-clean and the check greps clean.
             NEXT: blind label audit (see plan step 4).
-- [ ] Repo 2 (mcp-knowledge-server): M5–M7, starts after M4. Scope it SMALLER
-      than Repo 1 deliberately; it is a separate multi-day build.
 
 ## Progress estimate (as of session end 2026-08-03)
-Repo 1 roughly 70-75% done (rough estimate, not measured; same basis as the
+This repo roughly 70-75% done (rough estimate, not measured; same basis as the
 55-60% recorded 2026-07-30). Step 4 CLOSED BY DECISION, so urgency remains
 UNMEASURED against the new policy. Step 7's documentation half SHIPPED
 2026-08-03: README, MIT license, and the measured cost/latency table are public.
@@ -179,8 +194,8 @@ Remaining: step 5 (trigger wording, 30-45 min), step 6 (label adjudications,
 45-75 min), and step 7's engineering half — regression gate, GitHub Actions CI,
 per-case error handling, 1.5-2 hrs. The CI reduced-sweep design decision is still
 unmade and is the highest-risk item left. Most cuttable work is step 6;
-documenting the two labels as open questions with reasoning reads BETTER to a
-technical buyer than resolving them silently.
+documenting the two labels as open questions with the reasoning recorded is an
+acceptable terminal state, and is preferable to resolving them silently.
 
 ## M4 baseline — frozen reference
 STATUS: TAKEN 2026-07-30. RAW OUTPUT NOT RETAINED — evals/baselines/ was never
@@ -272,8 +287,9 @@ ZERO cases and a correct fix would look like a no-op at case level.
    b. [!] BLIND AUDIT CONTAMINATED 2026-07-30. A text-only extract command was
           delegated to Claude Code, which read labels, label_rationale, AND
           baseline agent behavior, then adjudicated all six FROM agent behavior
-          ("the agent rates urgency above low... the label is wrong"). Ronan read
-          the output, so case-by-case blindness is unrecoverable on these six.
+          ("the agent rates urgency above low... the label is wrong"). The
+          maintainer read the output, so case-by-case blindness is unrecoverable
+          on these six.
           DISCARDED: its label-problem vs agent-problem split, which was sorted
           by whether the agent's answer looked defensible.
           KEPT (text-level, agent-independent): easy_005 has an explicit "before
@@ -403,13 +419,14 @@ NUMBER? If yes, void. If it only prints differently, keep.
   SUMMARIES have twice misdescribed what the code does (judge selection) or
   asserted prior decisions with no record (error handling declined twice). Verify
   claims about state against disk. Also watch for stray non-ASCII in its output.
-- README design-decisions section (step 7), in Ronan's own words:
+- README design-decisions section (step 7), in the maintainer's own words:
   agent-vs-workflow, the duplication tripwire, strict needs_human with split
   FN/FP reporting, acceptable-sets-fixed-at-authoring, judge-as-advisory, the
   temperature/variance finding, temperature-as-caller-parameter (instrument vs
   product), per-case-not-per-field voting, and the label-integrity finding
-  (evals found bugs in the LABELS, not just the prompt — that is a strong and
-  unusual thing to be able to say). This section is what contract buyers read.
+  (evals found bugs in the LABELS, not just the prompt — an unusual and
+  well-evidenced result). This is the section that justifies the design, so it
+  carries the most weight in review.
 - README headline claim, well supported: 0 missed escalations across 51 runs at
   temperature 0, with false negatives reported separately from false positives.
 - README non-goals: blunt keyword matching on trigger citation; the judge being
