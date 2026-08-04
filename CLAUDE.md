@@ -9,9 +9,12 @@ that a movement in the score means something.
 Build quality over speed. Do not compress work to hit a date.
 
 ## Dataset shape (confirmed on disk)
-Top-level list of case objects. Field names, exactly:
-  case_id, ticket_text, customer_id, expected_category, expected_urgency,
-  expected_needs_human, label_rationale
+Top-level list of case objects. Field names, exactly, in file order:
+  case_id, case_type, customer_id, ticket_text, expected_category,
+  expected_urgency, expected_needs_human, label_rationale
+case_type is one of easy, ambiguous, adversarial, out_of_scope. It is NOT
+decoration: score_case reads it on every call and _report groups the results
+table by it, so a fixture built without it raises KeyError.
 There is NO nested `labels` object. Ambiguous cases carry LIST-valued
 expectations (e.g. amb_001 expected_urgency accepts ['medium','high']), so any
 code or display that compares expected vs actual must reuse the scorer's
