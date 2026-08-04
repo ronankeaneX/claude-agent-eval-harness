@@ -420,3 +420,60 @@ NUMBER? If yes, void. If it only prints differently, keep.
   trigger_cited, which broke the arithmetic between the two claims. All three were
   in the document whose thesis is measured-not-projected. A drafted claim inherits
   no authority from the care taken elsewhere in the same file.
+- TRIGGER_CITED IS NEAR-UNFAILABLE AND IT IS INSIDE THE GATE (found 2026-08-04,
+  NOT FIXED BY DECISION). scoring.py line 58 sets trigger_cited unconditionally
+  True on non-escalating runs; on escalating runs it fails only when the
+  reasoning contains NONE of 26 substrings, several as common as history,
+  repeat, money, dispute. Demonstrated: reasoning that NEGATES a trigger still
+  scores as citing it, and `fee` matches inside `coffee` (substring, no word
+  boundary). The pointed case is adv_005-shaped text — "reduce seat count at
+  renewal" — where reasoning that correctly RULES OUT the revenue trigger is
+  credited for citing it. The check detects SILENCE, not error.
+  It is the fourth condition in deterministic_pass (run_evals.py 69-71), so
+  this is gate behavior, not a diagnostic wrinkle. CONSEQUENCE: 8/17 is
+  OPTIMISTIC with respect to a stricter check — tightening can only fail cases
+  that currently pass. The headline claim is unaffected; it rests on
+  needs_human, which is scored strictly.
+  NOT FIXED because TRIGGER_KEYWORDS and the match logic are INSTRUMENT: any
+  change voids 8/17 and requires a re-sweep plus a new pre-registered
+  prediction. Priced like a label change and declined on demo scope.
+  README non-goal must be SHARPENED: the current wording ("does not check
+  whether the trigger applies") is true but understates it. The accurate
+  statement is that the check is unconditional in one direction and
+  near-unfailable in the other, so it contributes less to the gate than being
+  one of four all() conditions implies.
+  ALSO: step 5's "direction beats vocabulary" is a SCORER problem as well as a
+  prompt one. Fixing SYSTEM_PROMPT alone would produce no detectable movement
+  in trigger_cited. Step 5's escalation prediction is unaffected.
+- FLIP-RATE REFINEMENT (2026-08-04): the baseline's per-field flips list
+  needs_human 1/17 (oos_001) and trigger_cited 1/17 (oos_001) as if
+  independent. They are not. trigger_cited is unconditionally True on
+  non-escalating runs, so it can only vary where escalation varies —
+  oos_001's trigger_cited flip is DOWNSTREAM of its needs_human flip. The
+  accurate statement is one flip with a dependent second, not two. Recorded
+  numbers unchanged; the INTERPRETATION narrows. Extends the pre-publish
+  catch already logged in this section.
+- DATASET PATH IS CWD-RELATIVE (found 2026-08-04, fix specified, NOT YET
+  APPLIED). run_evals.py line 39 is Path("evals/dataset/tickets.json") while
+  line 30 goes out of its way to resolve the repo root from __file__. Run the
+  harness from any other directory and it dies with FileNotFoundError, exit 1,
+  before any API call — verified. pytest is unaffected because it derives
+  rootdir from the test file's location. GitHub Actions works only by luck:
+  actions/checkout leaves cwd at the workspace root. Would break under a
+  working-directory key, a matrix that cds, or a composite action.
+  FIX: DATASET = Path(__file__).resolve().parent / "dataset" / "tickets.json"
+  Resolves to the same file from the repo root, so no recorded number moves and
+  8/17 holds.
+  PROCESS NOTE: this fix was agreed in chat and then not issued to any tool.
+  Caught by a pre-flight `git status` showing a clean tree. Same family as
+  "recorded DONE but never committed," arriving from a new direction — agreed
+  in conversation, never applied. Keep the pre-flight check.
+- TEST SUITE COVERS SCHEMA DRIFT ONLY (as of 2026-08-04). The two collected
+  tests both live in tests/test_schema_sync.py and check enum/Literal
+  agreement. Nothing exercised the agent loop, the scorer, the voting logic, or
+  the confusion-direction readout; those were verified by paid sweeps, or by
+  check_voting.py, which was a throwaway and no longer exists. The voting rules
+  defended most carefully in this file — even ties fail, None distinct from
+  False — had no automated protection. _majority, _aggregate, _matches, _wrong,
+  _tally and _fmt are all pure functions and testable at zero token cost;
+  tests/test_scoring.py addresses this.
